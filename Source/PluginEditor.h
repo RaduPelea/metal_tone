@@ -42,10 +42,10 @@ private:
     MetallicaToneProcessor& processor;
     MetallicaLookAndFeel laf;
 
-    AmpKnob kInput, kBass, kMid, kTreble, kMaster, kCabMix;
+    AmpKnob kGain, kBass, kMid, kTreble, kMaster, kCabMix;
 
     using Attachment = juce::AudioProcessorValueTreeState::SliderAttachment;
-    Attachment attInput, attBass, attMid, attTreble, attMaster, attCabMix;
+    Attachment attGain, attBass, attMid, attTreble, attMaster, attCabMix;
 
     juce::Label titleLabel;
     juce::Label presetLabel;

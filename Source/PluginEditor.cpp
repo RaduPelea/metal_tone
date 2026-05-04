@@ -108,10 +108,10 @@ void AmpKnob::resized()
 
 MetallicaToneEditor::MetallicaToneEditor(MetallicaToneProcessor& p)
     : AudioProcessorEditor(p), processor(p),
-      kInput("INPUT"), kBass("BASS"), kMid("MID"),
+      kGain("GAIN"), kBass("BASS"), kMid("MID"),
       kTreble("TREBLE"), kMaster("MASTER"), kCabMix("CAB MIX"),
-      attInput(p.apvts, "inputGain", kInput.slider),
-      attBass  (p.apvts, "bass",      kBass.slider),
+      attGain(p.apvts, "gain",   kGain.slider),
+      attBass(p.apvts, "bass",   kBass.slider),
       attMid   (p.apvts, "mid",       kMid.slider),
       attTreble(p.apvts, "treble",    kTreble.slider),
       attMaster(p.apvts, "master",    kMaster.slider),
@@ -119,7 +119,7 @@ MetallicaToneEditor::MetallicaToneEditor(MetallicaToneProcessor& p)
 {
     setLookAndFeel(&laf);
 
-    for (auto* k : { &kInput, &kBass, &kMid, &kTreble, &kMaster, &kCabMix })
+    for (auto* k : { &kGain, &kBass, &kMid, &kTreble, &kMaster, &kCabMix })
         addAndMakeVisible(k);
 
     // Title
@@ -176,7 +176,7 @@ void MetallicaToneEditor::resized()
     b.removeFromTop(4);  // gap
 
     const int knobW = b.getWidth() / 6;
-    for (auto* k : { &kInput, &kBass, &kMid, &kTreble, &kMaster, &kCabMix })
+    for (auto* k : { &kGain, &kBass, &kMid, &kTreble, &kMaster, &kCabMix })
     {
         k->setBounds(b.removeFromLeft(knobW));
     }

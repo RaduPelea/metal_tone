@@ -5,7 +5,7 @@
 
 namespace ParamIDs
 {
-    static const juce::String inputGain = "inputGain";  // 0-10
+    static const juce::String gain      = "gain";       // 0-10  preamp drive into NAM
     static const juce::String bass      = "bass";       // 0-10
     static const juce::String mid       = "mid";        // 0-10
     static const juce::String treble    = "treble";     // 0-10
@@ -24,8 +24,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout MetallicaToneProcessor::crea
             juce::ParameterID(id, 1), name,
             juce::NormalisableRange<float>(0.0f, 10.0f, 0.01f), def));
     };
-    dial(ParamIDs::inputGain, "Input Gain", 7.0f);
-    dial(ParamIDs::bass,      "Bass",       6.0f);
+    dial(ParamIDs::gain,   "Gain",   8.0f);   // default 8 = more drive
+    dial(ParamIDs::bass,   "Bass",   6.0f);
     dial(ParamIDs::mid,       "Mid",        2.0f);
     dial(ParamIDs::treble,    "Treble",     7.0f);
     dial(ParamIDs::master,    "Master",     7.0f);
@@ -33,10 +33,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout MetallicaToneProcessor::crea
     return { p.begin(), p.end() };
 }
 
-// ─── Helpers: 0-10 knob → dB ─────────────────────────────────────────────────
-// Input/Master: 0→-inf, 5=0dB, 10=+12dB  (linear knob on a dB scale, 5 = unity)
-static float dialToInputGainDb(float v)  { return (v / 5.0f - 1.0f) * 18.0f; } // -18..+18
-static float dialToEqDb(float v)         { return (v / 5.0f - 1.0f) * 12.0f; } // -12..+12
+// ─── Helpers: 0-10 knob → parameter ─────────────────────────────────────────
+// GAIN: exponential  0→1×  5→~7×  10→50×  (preamp drive into NAM)
+static double dialToPreBoost(float v)    { return std::pow(50.0, static_cast<double>(v) / 10.0); }
+static float dialToEqDb(float v)         { return (v / 5.0f - 1.0f) * 12.0f; }
 static float dialToMasterDb(float v)     { return (v / 5.0f - 1.0f) * 18.0f; }
 static float dialToCabMix(float v)       { return v / 10.0f; }
 
@@ -200,25 +200,19 @@ void MetallicaToneProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     auto* ch0 = buffer.getWritePointer(0);
 
-    // ── 1. Input gain ─────────────────────────────────────────────────────────
-    float inGainDb = dialToInputGainDb(apvts.getRawParameterValue(ParamIDs::inputGain)->load());
-    buffer.applyGain(0, 0, numSamples, juce::Decibels::decibelsToGain(inGainDb));
-
-    // ── 2. NAM + IR ──────────────────────────────────────────────────────────
-    // No SpinLock needed: JUCE guarantees prepareToPlay and processBlock
-    // are never concurrent. TryLock was causing random NAM skips → clean bursts.
     if (!namModel)
     {
-        // NAM not loaded — pass dry signal so we hear something + can diagnose
         for (int ch = 1; ch < numOut; ++ch)
             buffer.copyFrom(ch, 0, buffer, 0, 0, numSamples);
         return;
     }
+
+    // ── 1. NAM + IR ──────────────────────────────────────────────────────────
     {
         const size_t n = static_cast<size_t>(numSamples);
         if (namIn.size() < n * 2) { namIn.resize(n * 2, 0.0); namOut.resize(n * 2, 0.0); }
 
-        constexpr double preBoost = 10.0;
+        const double preBoost = dialToPreBoost(apvts.getRawParameterValue(ParamIDs::gain)->load());
         for (int i = 0; i < numSamples; ++i)
             namIn[static_cast<size_t>(i)] = static_cast<double>(ch0[i]) * preBoost;
 
