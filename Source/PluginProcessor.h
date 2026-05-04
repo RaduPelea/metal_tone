@@ -49,6 +49,7 @@ private:
     using Filter    = juce::dsp::IIR::Filter<float>;
     using FilterCfs = juce::dsp::IIR::Coefficients<float>;
     using DupFilter = juce::dsp::ProcessorDuplicator<Filter, FilterCfs>;
+    DupFilter hpfFilter;                      // fixed 80 Hz HPF — always on
     DupFilter bassFilter, midFilter, trebleFilter;
 
     juce::File namFilePath, irFilePath;

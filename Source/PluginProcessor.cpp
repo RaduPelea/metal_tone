@@ -141,9 +141,13 @@ void MetallicaToneProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     spec.numChannels      = static_cast<juce::uint32>(
         std::max(1, getTotalNumOutputChannels()));
 
+    hpfFilter.prepare(spec);    hpfFilter.reset();
     bassFilter.prepare(spec);   bassFilter.reset();
     midFilter.prepare(spec);    midFilter.reset();
     trebleFilter.prepare(spec); trebleFilter.reset();
+
+    // Fixed 80 Hz high-pass — tightens low notes, cuts sub-bass rumble
+    *hpfFilter.state = *FilterCfs::makeHighPass(sampleRate, 80.0f, 0.71f);
 
     updateEQ();
 }
@@ -162,13 +166,12 @@ void MetallicaToneProcessor::updateEQ()
     float midG    = juce::Decibels::decibelsToGain(midDb);
     float trebleG = juce::Decibels::decibelsToGain(trebleDb);
 
-    // Exact match of Python EQ:
-    //   bass   = butter(2, 250Hz,  LP) used as shelf:  lp*g + (x-lp)
-    //   mid    = butter(2, 600-1200Hz, BP) used as peak: x + bp*(g-1)
-    //              → geomean centre = sqrt(600*1200)=849Hz, Q=849/600=1.414
-    //   treble = butter(2, 3500Hz, HP) used as shelf: (x-hp) + hp*g
+    // Bass : low shelf  250 Hz — controls body/warmth
+    // Mid  : peak      1000 Hz Q=1.5 — scoop here preserves 200-600Hz "chunk"
+    //        (849Hz was cutting too low, making low notes muffled)
+    // Treble: high shelf 3500 Hz — presence/bite
     auto bassCoefs = FilterCfs::makeLowShelf  (currentSR, 250.0f,  0.71f, bassG);
-    auto midCoefs  = FilterCfs::makePeakFilter(currentSR, 849.0f,  1.414f, midG);
+    auto midCoefs  = FilterCfs::makePeakFilter(currentSR, 1000.0f, 1.5f,  midG);
     auto trebCoefs = FilterCfs::makeHighShelf  (currentSR, 3500.0f, 0.71f, trebleG);
 
     if (bassCoefs)   *bassFilter.state   = *bassCoefs;
@@ -221,7 +224,13 @@ void MetallicaToneProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         return;
     }
 
-    // ── 1. Noise gate ────────────────────────────────────────────────────────
+    // ── 1. Fixed HPF 80 Hz — tighten low end before NAM ─────────────────────
+    {
+        juce::dsp::AudioBlock<float> blk(buffer.getArrayOfWritePointers(), 1, (size_t)numSamples);
+        hpfFilter.process(juce::dsp::ProcessContextReplacing<float>(blk));
+    }
+
+    // ── 2. Noise gate ────────────────────────────────────────────────────────
     {
         const float thresh = dialToGateThreshLin(
             apvts.getRawParameterValue(ParamIDs::gate)->load());
