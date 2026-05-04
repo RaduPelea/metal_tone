@@ -68,6 +68,11 @@ private:
         }
     }
 
+    // Noise gate state
+    float gateEnv        = 0.f;
+    float gateAttackCoef = 0.f;
+    float gateRelCoef    = 0.f;
+
     double currentSR  = 44100.0;
     int    currentBSz = 512;
     float  lastBass = -999.f, lastMid = -999.f, lastTreble = -999.f;

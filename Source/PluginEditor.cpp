@@ -108,10 +108,11 @@ void AmpKnob::resized()
 
 MetallicaToneEditor::MetallicaToneEditor(MetallicaToneProcessor& p)
     : AudioProcessorEditor(p), processor(p),
-      kGain("GAIN"), kBass("BASS"), kMid("MID"),
+      kGain("GAIN"), kGate("GATE"), kBass("BASS"), kMid("MID"),
       kTreble("TREBLE"), kMaster("MASTER"), kCabMix("CAB MIX"),
-      attGain(p.apvts, "gain",   kGain.slider),
-      attBass(p.apvts, "bass",   kBass.slider),
+      attGain(p.apvts, "gain", kGain.slider),
+      attGate(p.apvts, "gate", kGate.slider),
+      attBass(p.apvts, "bass", kBass.slider),
       attMid   (p.apvts, "mid",       kMid.slider),
       attTreble(p.apvts, "treble",    kTreble.slider),
       attMaster(p.apvts, "master",    kMaster.slider),
@@ -119,7 +120,7 @@ MetallicaToneEditor::MetallicaToneEditor(MetallicaToneProcessor& p)
 {
     setLookAndFeel(&laf);
 
-    for (auto* k : { &kGain, &kBass, &kMid, &kTreble, &kMaster, &kCabMix })
+    for (auto* k : { &kGain, &kGate, &kBass, &kMid, &kTreble, &kMaster, &kCabMix })
         addAndMakeVisible(k);
 
     // Title
@@ -137,7 +138,7 @@ MetallicaToneEditor::MetallicaToneEditor(MetallicaToneProcessor& p)
     presetLabel.setJustificationType(juce::Justification::centred);
     addAndMakeVisible(presetLabel);
 
-    setSize(680, 280);
+    setSize(780, 280);
 }
 
 MetallicaToneEditor::~MetallicaToneEditor()
@@ -176,7 +177,7 @@ void MetallicaToneEditor::resized()
     b.removeFromTop(4);  // gap
 
     const int knobW = b.getWidth() / 6;
-    for (auto* k : { &kGain, &kBass, &kMid, &kTreble, &kMaster, &kCabMix })
+    for (auto* k : { &kGain, &kGate, &kBass, &kMid, &kTreble, &kMaster, &kCabMix })
     {
         k->setBounds(b.removeFromLeft(knobW));
     }
