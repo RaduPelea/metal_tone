@@ -49,9 +49,7 @@ private:
     using Filter    = juce::dsp::IIR::Filter<float>;
     using FilterCfs = juce::dsp::IIR::Coefficients<float>;
     using DupFilter = juce::dsp::ProcessorDuplicator<Filter, FilterCfs>;
-    DupFilter hpfFilter;                      // fixed 80 Hz HPF — pre-NAM
-    DupFilter bassFilter, midFilter, trebleFilter;
-    DupFilter presenceFilter;                 // fixed +3dB peak @ 2.5kHz — high-string lift
+    DupFilter bassFilter, midFilter, trebleFilter;   // user-controlled EQ only
 
     juce::File namFilePath, irFilePath;
 
