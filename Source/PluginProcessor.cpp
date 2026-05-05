@@ -25,10 +25,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout MetallicaToneProcessor::crea
             juce::ParameterID(id, 1), name,
             juce::NormalisableRange<float>(0.0f, 10.0f, 0.01f), def));
     };
-    dial(ParamIDs::gain,   "Gain",   8.0f);
-    dial(ParamIDs::gate,   "Gate",   4.0f);   // default 4 = -48 dB threshold
-    dial(ParamIDs::bass,   "Bass",   6.0f);
-    dial(ParamIDs::mid,       "Mid",        2.0f);
+    dial(ParamIDs::gain,   "Gain",   6.0f);   // 6 = sweet spot, less crushing
+    dial(ParamIDs::gate,   "Gate",   3.0f);   // gentler default
+    dial(ParamIDs::bass,   "Bass",   5.0f);   // flat by default
+    dial(ParamIDs::mid,       "Mid",        4.0f);   // less scooped — preserves chunk
     dial(ParamIDs::treble,    "Treble",     7.0f);
     dial(ParamIDs::master,    "Master",     7.0f);
     dial(ParamIDs::cabMix,    "Cab Mix",   10.0f);
@@ -36,8 +36,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout MetallicaToneProcessor::crea
 }
 
 // ─── Helpers: 0-10 knob → parameter ─────────────────────────────────────────
-// GAIN: exponential  0→1×  5→~7×  10→50×
-static double dialToPreBoost(float v)    { return std::pow(50.0, static_cast<double>(v) / 10.0); }
+// GAIN: exponential  0→1×  5→~5×  10→25×  (was 50× — too crushing for highs)
+static double dialToPreBoost(float v)    { return std::pow(25.0, static_cast<double>(v) / 10.0); }
 // GATE: 0→-inf (off)  1→-80dB  10→-20dB  (threshold before NAM)
 static float dialToGateThreshLin(float v)
 {
@@ -141,13 +141,19 @@ void MetallicaToneProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     spec.numChannels      = static_cast<juce::uint32>(
         std::max(1, getTotalNumOutputChannels()));
 
-    hpfFilter.prepare(spec);    hpfFilter.reset();
-    bassFilter.prepare(spec);   bassFilter.reset();
-    midFilter.prepare(spec);    midFilter.reset();
-    trebleFilter.prepare(spec); trebleFilter.reset();
+    hpfFilter.prepare(spec);      hpfFilter.reset();
+    bassFilter.prepare(spec);     bassFilter.reset();
+    midFilter.prepare(spec);      midFilter.reset();
+    trebleFilter.prepare(spec);   trebleFilter.reset();
+    presenceFilter.prepare(spec); presenceFilter.reset();
 
-    // Fixed 80 Hz high-pass — tightens low notes, cuts sub-bass rumble
+    // Fixed 80 Hz high-pass — tightens low notes
     *hpfFilter.state = *FilterCfs::makeHighPass(sampleRate, 80.0f, 0.71f);
+
+    // Fixed presence peak: +3dB at 2.5kHz — lifts high-string harmonics
+    // so the high E and B don't get lost under the heavy distortion
+    *presenceFilter.state = *FilterCfs::makePeakFilter(
+        sampleRate, 2500.0f, 1.0f, juce::Decibels::decibelsToGain(3.0f));
 
     updateEQ();
 }
@@ -172,7 +178,7 @@ void MetallicaToneProcessor::updateEQ()
     // Treble: high shelf 3500 Hz — presence/bite
     auto bassCoefs = FilterCfs::makeLowShelf  (currentSR, 250.0f,  0.71f, bassG);
     auto midCoefs  = FilterCfs::makePeakFilter(currentSR, 1000.0f, 1.5f,  midG);
-    auto trebCoefs = FilterCfs::makeHighShelf  (currentSR, 3500.0f, 0.71f, trebleG);
+    auto trebCoefs = FilterCfs::makeHighShelf (currentSR, 3000.0f, 0.71f, trebleG);  // was 3500
 
     if (bassCoefs)   *bassFilter.state   = *bassCoefs;
     if (midCoefs)    *midFilter.state    = *midCoefs;
@@ -226,7 +232,7 @@ void MetallicaToneProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     // ── 1. Fixed HPF 80 Hz — tighten low end before NAM ─────────────────────
     {
-        juce::dsp::AudioBlock<float> blk(buffer.getArrayOfWritePointers(), 1, (size_t)numSamples);
+        juce::dsp::AudioBlock<float> blk(buffer);
         hpfFilter.process(juce::dsp::ProcessContextReplacing<float>(blk));
     }
 
@@ -290,13 +296,14 @@ void MetallicaToneProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         }
     }
 
-    // ── 3. Bass / Mid / Treble EQ ─────────────────────────────────────────────
+    // ── 3. Bass / Mid / Treble EQ + fixed presence peak ──────────────────────
     {
         juce::dsp::AudioBlock<float> block(buffer);
         juce::dsp::ProcessContextReplacing<float> ctx(block);
         bassFilter.process(ctx);
         midFilter.process(ctx);
         trebleFilter.process(ctx);
+        presenceFilter.process(ctx);   // fixed +3dB @ 2.5kHz, lifts high strings
     }
 
     // ── 4. Master volume ──────────────────────────────────────────────────────
