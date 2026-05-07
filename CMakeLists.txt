@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(MetalTone VERSION 1.0.0)
+project(UltimateMetalTone VERSION 1.0.0)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -41,49 +41,51 @@ else()
     set(PLUGIN_FORMATS VST3 Standalone)
 endif()
 
-juce_add_plugin(MetalTone
-    COMPANY_NAME             "MetalTone"
+juce_add_plugin(UltimateMetalTone
+    COMPANY_NAME             "UltimateMetalTone"
     IS_SYNTH                 FALSE
     NEEDS_MIDI_INPUT         FALSE
     NEEDS_MIDI_OUTPUT        FALSE
     IS_MIDI_EFFECT           FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
     COPY_PLUGIN_AFTER_BUILD  TRUE
-    PLUGIN_MANUFACTURER_CODE Mtal
-    PLUGIN_CODE              Mtal
+    PLUGIN_MANUFACTURER_CODE Umtl
+    PLUGIN_CODE              Umtl
     FORMATS                  ${PLUGIN_FORMATS}
-    PRODUCT_NAME             "MetalTone"
+    PRODUCT_NAME             "Ultimate Metal Tone"
     MICROPHONE_PERMISSION_ENABLED TRUE
-    MICROPHONE_PERMISSION_TEXT "MetalTone needs audio input for your guitar."
+    MICROPHONE_PERMISSION_TEXT "Ultimate Metal Tone needs audio input for your guitar."
 )
 
 # ── Embedded defaults ────────────────────────────────────────────────────────
-juce_add_binary_data(MetalToneBinaryData
+juce_add_binary_data(UMTBinaryData
     SOURCES
         Resources/DethLead.nam
         Resources/sm57.wav
+        Resources/Walk.nam
+        Resources/PanteraCowboys.wav
 )
 
 # ── Sources ──────────────────────────────────────────────────────────────────
-target_sources(MetalTone PRIVATE
+target_sources(UltimateMetalTone PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
 )
 
-target_include_directories(MetalTone PRIVATE
+target_include_directories(UltimateMetalTone PRIVATE
     ${NAM_CORE_PATH}
     ${NAM_DEPS_PATH}/eigen
     ${NAM_DEPS_PATH}/nlohmann
     ${ADSP_PATH}
 )
-target_include_directories(MetalTone SYSTEM PRIVATE
+target_include_directories(UltimateMetalTone SYSTEM PRIVATE
     ${NAM_CORE_PATH}
     ${NAM_DEPS_PATH}/eigen
     ${NAM_DEPS_PATH}/nlohmann
     ${ADSP_PATH}
 )
 
-target_compile_definitions(MetalTone PUBLIC
+target_compile_definitions(UltimateMetalTone PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
@@ -91,9 +93,9 @@ target_compile_definitions(MetalTone PUBLIC
 )
 
 # WHOLEARCHIVE forces MSVC linker to keep wavenet/model.cpp's static registrar
-target_link_libraries(MetalTone
+target_link_libraries(UltimateMetalTone
     PRIVATE
-        MetalToneBinaryData
+        UMTBinaryData
         $<$<CXX_COMPILER_ID:MSVC>:-WHOLEARCHIVE:NAMCore>
         NAMCore
         juce::juce_audio_utils

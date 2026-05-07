@@ -1,14 +1,15 @@
 #include "PluginEditor.h"
 
-static const juce::Colour BG       { 0xff1a1a1a };
+static const juce::Colour BG       { 0xff141414 };
 static const juce::Colour PANEL    { 0xff262626 };
 static const juce::Colour AMBER    { 0xffe8a020 };
 static const juce::Colour AMBER_DIM{ 0xff7a5010 };
 static const juce::Colour CREAM    { 0xffe0d8c8 };
+static const juce::Colour ACTIVE   { 0xff8b1a1a };
 
 // ─── Knob ─────────────────────────────────────────────────────────────────────
 
-MetalToneEditor::Knob::Knob(const juce::String& name)
+UltimateMetalToneEditor::Knob::Knob(const juce::String& name)
 {
     slider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
     slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 60, 16);
@@ -27,7 +28,7 @@ MetalToneEditor::Knob::Knob(const juce::String& name)
     addAndMakeVisible(caption);
 }
 
-void MetalToneEditor::Knob::resized()
+void UltimateMetalToneEditor::Knob::resized()
 {
     auto b = getLocalBounds();
     caption.setBounds(b.removeFromTop(14));
@@ -36,19 +37,19 @@ void MetalToneEditor::Knob::resized()
 
 // ─── Editor ───────────────────────────────────────────────────────────────────
 
-MetalToneEditor::MetalToneEditor(MetalToneProcessor& p)
+UltimateMetalToneEditor::UltimateMetalToneEditor(UltimateMetalToneProcessor& p)
     : AudioProcessorEditor(p), processor(p),
-      kInput("INPUT"), kGate("GATE"), kBass("BASS"),
-      kMid("MID"), kTreble("TREBLE"), kMaster("MASTER"),
-      aInput (p.apvts, "inputGain", kInput.slider),
-      aGate  (p.apvts, "gate",       kGate.slider),
-      aBass  (p.apvts, "bass",       kBass.slider),
-      aMid   (p.apvts, "mid",        kMid.slider),
-      aTreble(p.apvts, "treble",     kTreble.slider),
-      aMaster(p.apvts, "master",     kMaster.slider)
+      kGain  ("GAIN"),   kGate ("GATE"),  kBass  ("BASS"),
+      kMid   ("MID"),    kTreble("TREBLE"), kMaster("MASTER"),
+      aGain  (p.apvts, "gain",   kGain.slider),
+      aGate  (p.apvts, "gate",   kGate.slider),
+      aBass  (p.apvts, "bass",   kBass.slider),
+      aMid   (p.apvts, "mid",    kMid.slider),
+      aTreble(p.apvts, "treble", kTreble.slider),
+      aMaster(p.apvts, "master", kMaster.slider)
 {
-    titleLabel.setText("METAL TONE  —  NAM + IR", juce::dontSendNotification);
-    titleLabel.setFont(juce::Font(juce::FontOptions{}.withHeight(20.f).withStyle("Bold")));
+    titleLabel.setText("ULTIMATE METAL TONE", juce::dontSendNotification);
+    titleLabel.setFont(juce::Font(juce::FontOptions{}.withHeight(22.f).withStyle("Bold")));
     titleLabel.setJustificationType(juce::Justification::centred);
     titleLabel.setColour(juce::Label::textColourId, AMBER);
     addAndMakeVisible(titleLabel);
@@ -82,18 +83,53 @@ MetalToneEditor::MetalToneEditor(MetalToneProcessor& p)
     addAndMakeVisible(btnLoadNam);
     addAndMakeVisible(btnLoadIr);
 
-    for (auto* k : { &kInput, &kGate, &kBass, &kMid, &kTreble, &kMaster })
+    // Preset buttons
+    auto stylePreset = [](juce::TextButton& b)
+    {
+        b.setColour(juce::TextButton::buttonColourId, PANEL);
+        b.setColour(juce::TextButton::buttonOnColourId, ACTIVE);
+        b.setColour(juce::TextButton::textColourOffId, CREAM);
+        b.setColour(juce::TextButton::textColourOnId, juce::Colours::white);
+        b.setColour(juce::ComboBox::outlineColourId, AMBER_DIM);
+        b.setClickingTogglesState(true);
+        b.setRadioGroupId(1);
+    };
+    stylePreset(btnPresetThrash);
+    stylePreset(btnPresetGroove);
+    btnPresetThrash.setToggleState(true, juce::dontSendNotification);
+
+    btnPresetThrash.onClick = [this]
+    {
+        processor.loadPreset(UltimateMetalToneProcessor::ThrashPreset);
+        refreshPresetButtons();
+    };
+    btnPresetGroove.onClick = [this]
+    {
+        processor.loadPreset(UltimateMetalToneProcessor::GroovePreset);
+        refreshPresetButtons();
+    };
+    addAndMakeVisible(btnPresetThrash);
+    addAndMakeVisible(btnPresetGroove);
+
+    for (auto* k : { &kGain, &kGate, &kBass, &kMid, &kTreble, &kMaster })
         addAndMakeVisible(k);
 
-    setSize(640, 320);
+    setSize(680, 360);
     startTimerHz(10);
 }
 
-MetalToneEditor::~MetalToneEditor() { stopTimer(); }
+UltimateMetalToneEditor::~UltimateMetalToneEditor() { stopTimer(); }
 
-// ─── Layout / paint ───────────────────────────────────────────────────────────
+void UltimateMetalToneEditor::refreshPresetButtons()
+{
+    bool isThrash = processor.getCurrentPreset() == UltimateMetalToneProcessor::ThrashPreset;
+    btnPresetThrash.setToggleState( isThrash, juce::dontSendNotification);
+    btnPresetGroove.setToggleState(!isThrash, juce::dontSendNotification);
+}
 
-void MetalToneEditor::paint(juce::Graphics& g)
+// ─── Layout / paint ──────────────────────────────────────────────────────────
+
+void UltimateMetalToneEditor::paint(juce::Graphics& g)
 {
     g.fillAll(BG);
 
@@ -101,7 +137,6 @@ void MetalToneEditor::paint(juce::Graphics& g)
     g.setColour(AMBER);
     g.fillRect(0, 0, getWidth(), 2);
 
-    // Drop highlight
     if (dragHighlight)
     {
         g.setColour(AMBER.withAlpha(0.3f));
@@ -109,12 +144,22 @@ void MetalToneEditor::paint(juce::Graphics& g)
     }
 }
 
-void MetalToneEditor::resized()
+void UltimateMetalToneEditor::resized()
 {
     auto b = getLocalBounds().reduced(8);
 
-    titleLabel.setBounds(b.removeFromTop(28));
-    b.removeFromTop(4);
+    titleLabel.setBounds(b.removeFromTop(30));
+    b.removeFromTop(6);
+
+    // Preset row
+    {
+        auto row = b.removeFromTop(34);
+        const int w = (row.getWidth() - 8) / 2;
+        btnPresetThrash.setBounds(row.removeFromLeft(w));
+        row.removeFromLeft(8);
+        btnPresetGroove.setBounds(row.removeFromLeft(w));
+        b.removeFromTop(8);
+    }
 
     // File rows
     auto fileRow = [&](juce::Label& lbl, juce::TextButton& btn)
@@ -130,26 +175,27 @@ void MetalToneEditor::resized()
 
     b.removeFromTop(8);
 
-    // 6 knobs in a row
     const int knobW = b.getWidth() / 6;
-    for (auto* k : { &kInput, &kGate, &kBass, &kMid, &kTreble, &kMaster })
+    for (auto* k : { &kGain, &kGate, &kBass, &kMid, &kTreble, &kMaster })
         k->setBounds(b.removeFromLeft(knobW).reduced(2));
 }
 
-// ─── Timer (refresh file labels) ─────────────────────────────────────────────
+// ─── Timer ───────────────────────────────────────────────────────────────────
 
-void MetalToneEditor::timerCallback()
+void UltimateMetalToneEditor::timerCallback()
 {
     auto nm = "NAM:  " + processor.getNAMName();
     if (namLabel.getText() != nm) namLabel.setText(nm, juce::dontSendNotification);
 
     auto ir = "IR:   " + processor.getIRName();
     if (irLabel.getText() != ir)  irLabel.setText(ir,  juce::dontSendNotification);
+
+    refreshPresetButtons();
 }
 
 // ─── File chooser ────────────────────────────────────────────────────────────
 
-void MetalToneEditor::chooseNAM()
+void UltimateMetalToneEditor::chooseNAM()
 {
     fileChooser = std::make_unique<juce::FileChooser>(
         "Select a .nam file", juce::File{}, "*.nam");
@@ -163,7 +209,7 @@ void MetalToneEditor::chooseNAM()
         });
 }
 
-void MetalToneEditor::chooseIR()
+void UltimateMetalToneEditor::chooseIR()
 {
     fileChooser = std::make_unique<juce::FileChooser>(
         "Select an IR (.wav)", juce::File{}, "*.wav;*.aif;*.aiff");
@@ -179,7 +225,7 @@ void MetalToneEditor::chooseIR()
 
 // ─── Drag & drop ─────────────────────────────────────────────────────────────
 
-bool MetalToneEditor::isInterestedInFileDrag(const juce::StringArray& files)
+bool UltimateMetalToneEditor::isInterestedInFileDrag(const juce::StringArray& files)
 {
     for (auto& f : files)
     {
@@ -191,17 +237,17 @@ bool MetalToneEditor::isInterestedInFileDrag(const juce::StringArray& files)
     return false;
 }
 
-void MetalToneEditor::fileDragEnter(const juce::StringArray&, int, int)
+void UltimateMetalToneEditor::fileDragEnter(const juce::StringArray&, int, int)
 {
     dragHighlight = true; repaint();
 }
 
-void MetalToneEditor::fileDragExit(const juce::StringArray&)
+void UltimateMetalToneEditor::fileDragExit(const juce::StringArray&)
 {
     dragHighlight = false; repaint();
 }
 
-void MetalToneEditor::filesDropped(const juce::StringArray& files, int, int)
+void UltimateMetalToneEditor::filesDropped(const juce::StringArray& files, int, int)
 {
     dragHighlight = false; repaint();
 

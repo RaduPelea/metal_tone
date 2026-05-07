@@ -9,11 +9,11 @@
 #include "NAM/get_dsp.h"
 #include "ImpulseResponse.h"
 
-class MetalToneProcessor : public juce::AudioProcessor
+class UltimateMetalToneProcessor : public juce::AudioProcessor
 {
 public:
-    MetalToneProcessor();
-    ~MetalToneProcessor() override;
+    UltimateMetalToneProcessor();
+    ~UltimateMetalToneProcessor() override;
 
     void prepareToPlay(double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -48,6 +48,11 @@ public:
     juce::String getNAMName() const { return namName; }
     juce::String getIRName () const { return irName;  }
 
+    // Presets
+    enum Preset { ThrashPreset = 0, GroovePreset = 1 };
+    void loadPreset(Preset p);
+    Preset getCurrentPreset() const { return currentPreset; }
+
 private:
     void writeDefaultsToDisk();
 
@@ -57,9 +62,11 @@ private:
     std::atomic<bool> namPending {false}, irPending {false};
     juce::SpinLock    swapLock;
     juce::String      namName, irName;
-    juce::File        irFileForReload;   // remembered so prepareToPlay can re-init at new SR
+    juce::File        irFileForReload;
 
-    // NAM I/O buffers (double precision required by the API)
+    Preset currentPreset = ThrashPreset;
+
+    // NAM I/O buffers (double precision)
     std::vector<double> namIn, namOut;
 
     // 3-band tone stack
@@ -78,9 +85,10 @@ private:
     double currentSR  = 44100.0;
     int    currentBSz = 512;
 
-    // Default file paths in %APPDATA%/MetalTone/
+    // Default file paths in %APPDATA%/UltimateMetalTone/
     juce::File appDataDir;
-    juce::File defaultNamFile, defaultIrFile;
+    juce::File thrashNamFile, thrashIrFile;
+    juce::File grooveNamFile, grooveIrFile;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MetalToneProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(UltimateMetalToneProcessor)
 };

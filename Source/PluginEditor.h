@@ -3,18 +3,17 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "PluginProcessor.h"
 
-class MetalToneEditor : public juce::AudioProcessorEditor,
-                         public juce::FileDragAndDropTarget,
-                         private juce::Timer
+class UltimateMetalToneEditor : public juce::AudioProcessorEditor,
+                                  public juce::FileDragAndDropTarget,
+                                  private juce::Timer
 {
 public:
-    explicit MetalToneEditor(MetalToneProcessor&);
-    ~MetalToneEditor() override;
+    explicit UltimateMetalToneEditor(UltimateMetalToneProcessor&);
+    ~UltimateMetalToneEditor() override;
 
     void paint(juce::Graphics&) override;
     void resized() override;
 
-    // Drag & drop
     bool isInterestedInFileDrag(const juce::StringArray&) override;
     void filesDropped         (const juce::StringArray&, int x, int y) override;
     void fileDragEnter        (const juce::StringArray&, int x, int y) override;
@@ -24,32 +23,34 @@ private:
     void timerCallback() override;
     void chooseNAM();
     void chooseIR();
+    void refreshPresetButtons();
 
-    // Helper: one labelled rotary knob
     struct Knob : public juce::Component
     {
         juce::Slider slider;
         juce::Label  caption;
-
         Knob(const juce::String& name);
         void resized() override;
     };
 
-    MetalToneProcessor& processor;
+    UltimateMetalToneProcessor& processor;
 
-    Knob kInput, kGate, kBass, kMid, kTreble, kMaster;
+    Knob kGain, kGate, kBass, kMid, kTreble, kMaster;
 
     using Att = juce::AudioProcessorValueTreeState::SliderAttachment;
-    Att aInput, aGate, aBass, aMid, aTreble, aMaster;
+    Att aGain, aGate, aBass, aMid, aTreble, aMaster;
 
     juce::Label    titleLabel;
     juce::Label    namLabel, irLabel;
     juce::TextButton btnLoadNam { "Load NAM..." };
     juce::TextButton btnLoadIr  { "Load IR..."  };
 
+    juce::TextButton btnPresetThrash { "THRASH" };
+    juce::TextButton btnPresetGroove { "GROOVE METAL" };
+
     std::unique_ptr<juce::FileChooser> fileChooser;
 
     bool dragHighlight = false;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MetalToneEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(UltimateMetalToneEditor)
 };
