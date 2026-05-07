@@ -295,33 +295,8 @@ UltimateMetalToneEditor::UltimateMetalToneEditor(UltimateMetalToneProcessor& p)
     subtitleLabel.setJustificationType(juce::Justification::centredLeft);
     addAndMakeVisible(subtitleLabel);
 
-    auto styleFileLabel = [](juce::Label& l)
-    {
-        l.setColour(juce::Label::textColourId, pal::text);
-        l.setColour(juce::Label::backgroundColourId, pal::panel);
-        l.setColour(juce::Label::outlineColourId, pal::divider);
-        l.setFont(juce::Font(juce::FontOptions{}.withHeight(12.5f)));
-        l.setJustificationType(juce::Justification::centredLeft);
-        l.setBorderSize({ 4, 12, 4, 12 });
-        l.setText("loading...", juce::dontSendNotification);
-    };
-    styleFileLabel(namLabel);
-    styleFileLabel(irLabel);
-    addAndMakeVisible(namLabel);
-    addAndMakeVisible(irLabel);
-
-    auto styleLoadBtn = [](juce::TextButton& b)
-    {
-        b.setColour(juce::TextButton::buttonColourId, pal::panel);
-        b.setColour(juce::TextButton::textColourOffId, pal::accent);
-        b.setColour(juce::ComboBox::outlineColourId, pal::divider);
-    };
-    styleLoadBtn(btnLoadNam);
-    styleLoadBtn(btnLoadIr);
-    btnLoadNam.onClick = [this] { chooseNAM(); };
-    btnLoadIr .onClick = [this] { chooseIR();  };
-    addAndMakeVisible(btnLoadNam);
-    addAndMakeVisible(btnLoadIr);
+    // File rows removed — Custom preset relies on drag-and-drop only.
+    // (namLabel / irLabel / btnLoadNam / btnLoadIr kept as members but never shown)
 
     statusLabel.setFont(juce::Font(juce::FontOptions{}.withHeight(10.5f)));
     statusLabel.setColour(juce::Label::textColourId, pal::textDim);
@@ -401,9 +376,9 @@ void UltimateMetalToneEditor::refreshPresetHighlights()
 
 void UltimateMetalToneEditor::updateCustomVisibility()
 {
-    bool isCustom = processor.getCurrentPreset() == UltimateMetalToneProcessor::Custom;
-    btnLoadNam.setVisible(isCustom);
-    btnLoadIr .setVisible(isCustom);
+    // Load buttons no longer shown anywhere — drag-drop only.
+    btnLoadNam.setVisible(false);
+    btnLoadIr .setVisible(false);
 }
 
 // ── Drawing helpers ─────────────────────────────────────────────────────────
@@ -595,20 +570,7 @@ void UltimateMetalToneEditor::resized()
 
     titleLabel.setBounds(main.removeFromTop(28));
     subtitleLabel.setBounds(main.removeFromTop(14));
-    main.removeFromTop(10);
-
-    // File rows (always visible labels; buttons hidden unless Custom)
-    auto namRow = main.removeFromTop(26);
-    btnLoadNam.setBounds(namRow.removeFromRight(96));
-    namRow.removeFromRight(8);
-    namLabel.setBounds(namRow);
-    main.removeFromTop(4);
-
-    auto irRow = main.removeFromTop(26);
-    btnLoadIr.setBounds(irRow.removeFromRight(96));
-    irRow.removeFromRight(8);
-    irLabel.setBounds(irRow);
-    main.removeFromTop(12);
+    main.removeFromTop(14);
 
     // Status line at bottom
     auto status = main.removeFromBottom(20);
@@ -664,12 +626,6 @@ void UltimateMetalToneEditor::resized()
 
 void UltimateMetalToneEditor::timerCallback()
 {
-    auto nm = "NAM   " + processor.getNAMName();
-    if (namLabel.getText() != nm) namLabel.setText(nm, juce::dontSendNotification);
-
-    auto ir = "IR     " + processor.getIRName();
-    if (irLabel.getText() != ir)  irLabel.setText(ir,  juce::dontSendNotification);
-
     auto st = processor.getStatusText();
     if (statusLabel.getText() != st) statusLabel.setText(st, juce::dontSendNotification);
 

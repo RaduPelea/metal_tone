@@ -21,23 +21,35 @@ UltimateMetalToneProcessor::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> p;
 
-    auto db = [&](const juce::String& id, const juce::String& name,
-                   float lo, float hi, float def)
+    // 0.1-precision dial that displays 1.0..10.0
+    auto dial = [&](const juce::String& id, const juce::String& name, float def)
     {
+        auto fmt = [](float v, int) { return juce::String(v, 1); };
         p.push_back(std::make_unique<juce::AudioParameterFloat>(
             juce::ParameterID(id, 1), name,
-            juce::NormalisableRange<float>(lo, hi, 0.1f), def,
-            juce::AudioParameterFloatAttributes().withLabel("dB")));
+            juce::NormalisableRange<float>(1.0f, 10.0f, 0.1f), def,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction(fmt)));
     };
 
-    db(ParamIDs::gain,   "Gain",   -24.0f,  24.0f, 0.0f);
-    db(ParamIDs::gate,   "Gate",  -100.0f,   0.0f, -100.0f);
-    db(ParamIDs::bass,   "Bass",   -12.0f,  12.0f, 0.0f);
-    db(ParamIDs::mid,    "Mid",    -12.0f,  12.0f, 0.0f);
-    db(ParamIDs::treble, "Treble", -12.0f,  12.0f, 0.0f);
-    db(ParamIDs::master, "Master", -24.0f,  24.0f, 0.0f);
+    dial(ParamIDs::gain,   "Gain",   5.5f);
+    // Gate keeps its dB scale — user explicitly asked to leave it alone
+    p.push_back(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID(ParamIDs::gate, 1), "Gate",
+        juce::NormalisableRange<float>(-100.0f, 0.0f, 0.1f), -100.0f,
+        juce::AudioParameterFloatAttributes().withLabel("dB")));
+    dial(ParamIDs::bass,   "Bass",   5.5f);
+    dial(ParamIDs::mid,    "Mid",    5.5f);
+    dial(ParamIDs::treble, "Treble", 5.5f);
+    dial(ParamIDs::master, "Master", 5.5f);
 
     return { p.begin(), p.end() };
+}
+
+// ── Dial → dB helpers ───────────────────────────────────────────────────────
+// Knob shows 1.0..10.0; centre 5.5 = 0 dB, 1.0 = -range, 10.0 = +range.
+static inline float dialToDb(float v, float rangeDb)
+{
+    return (v - 5.5f) / 4.5f * rangeDb;
 }
 
 // ── Preset metadata table ───────────────────────────────────────────────────
@@ -248,13 +260,18 @@ void UltimateMetalToneProcessor::updateEQ()
 {
     if (currentSR <= 0.0) return;
 
-    float bassDb   = apvts.getRawParameterValue(ParamIDs::bass)->load();
-    float midDb    = apvts.getRawParameterValue(ParamIDs::mid)->load();
-    float trebleDb = apvts.getRawParameterValue(ParamIDs::treble)->load();
+    // Knobs 1..10 → ±12 dB
+    float bassRaw   = apvts.getRawParameterValue(ParamIDs::bass)->load();
+    float midRaw    = apvts.getRawParameterValue(ParamIDs::mid)->load();
+    float trebleRaw = apvts.getRawParameterValue(ParamIDs::treble)->load();
 
-    if (bassDb == lastBass && midDb == lastMid && trebleDb == lastTreble)
+    if (bassRaw == lastBass && midRaw == lastMid && trebleRaw == lastTreble)
         return;
-    lastBass = bassDb; lastMid = midDb; lastTreble = trebleDb;
+    lastBass = bassRaw; lastMid = midRaw; lastTreble = trebleRaw;
+
+    float bassDb   = dialToDb(bassRaw,   12.0f);
+    float midDb    = dialToDb(midRaw,    12.0f);
+    float trebleDb = dialToDb(trebleRaw, 12.0f);
 
     auto bc = FilterCfs::makeLowShelf  (currentSR, 250.0f, 0.71f, juce::Decibels::decibelsToGain(bassDb));
     auto mc = FilterCfs::makePeakFilter(currentSR, 800.0f, 1.0f,  juce::Decibels::decibelsToGain(midDb));
@@ -297,8 +314,8 @@ void UltimateMetalToneProcessor::processBlock(juce::AudioBuffer<float>& buffer,
 
     auto* ch0 = buffer.getWritePointer(0);
 
-    // Gain (pre-NAM drive)
-    float gainDb = apvts.getRawParameterValue(ParamIDs::gain)->load();
+    // Gain (pre-NAM drive) — knob 1..10, ±24 dB swing
+    float gainDb = dialToDb(apvts.getRawParameterValue(ParamIDs::gain)->load(), 24.0f);
     if (std::abs(gainDb) > 0.01f)
         buffer.applyGain(0, 0, numSamples, juce::Decibels::decibelsToGain(gainDb));
 
@@ -365,8 +382,8 @@ void UltimateMetalToneProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         trebleFilter.process(ctx);
     }
 
-    // Master
-    float masterDb = apvts.getRawParameterValue(ParamIDs::master)->load();
+    // Master — knob 1..10, ±24 dB
+    float masterDb = dialToDb(apvts.getRawParameterValue(ParamIDs::master)->load(), 24.0f);
     if (std::abs(masterDb) > 0.01f)
         buffer.applyGain(juce::Decibels::decibelsToGain(masterDb));
 
