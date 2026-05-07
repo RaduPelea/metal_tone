@@ -40,6 +40,24 @@ UltimateMetalToneProcessor::createParameterLayout()
     return { p.begin(), p.end() };
 }
 
+// ── Preset metadata table ───────────────────────────────────────────────────
+
+const UltimateMetalToneProcessor::PresetInfo&
+UltimateMetalToneProcessor::getPresetInfo(Preset p)
+{
+    static const PresetInfo infos[NumPresets] = {
+        { "Thrash",            true,  false },  // Mesa IIC+ / sm57
+        { "Groove Metal",      true,  false },  // Walk / Pantera Cowboys
+        { "Heavy Metal",       false, false },  // coming soon
+        { "Death Metal",       false, false },
+        { "Black Metal",       false, false },
+        { "Doom Metal",        false, false },
+        { "Progressive Metal", false, false },
+        { "Custom",            true,  true  }   // user loads files
+    };
+    return infos[(int)p];
+}
+
 // ── Constructor ─────────────────────────────────────────────────────────────
 
 UltimateMetalToneProcessor::UltimateMetalToneProcessor()
@@ -64,7 +82,7 @@ UltimateMetalToneProcessor::UltimateMetalToneProcessor()
     grooveIrFile  = appDataDir.getChildFile("PanteraCowboys.wav");
 
     // Boot with the Thrash preset
-    loadPreset(ThrashPreset);
+    loadPreset(Thrash);
 }
 
 UltimateMetalToneProcessor::~UltimateMetalToneProcessor()
@@ -90,17 +108,29 @@ void UltimateMetalToneProcessor::writeDefaultsToDisk()
 void UltimateMetalToneProcessor::loadPreset(Preset p)
 {
     currentPreset = p;
-    if (p == ThrashPreset)
+    const auto& info = getPresetInfo(p);
+
+    juce::Logger::writeToLog("Preset selected: " + juce::String(info.displayName));
+
+    switch (p)
     {
-        loadNAMFromFile(thrashNamFile);
-        loadIRFromFile (thrashIrFile);
-        juce::Logger::writeToLog("Preset: Thrash (Mesa IIC+ Deth Lead + sm57)");
-    }
-    else
-    {
-        loadNAMFromFile(grooveNamFile);
-        loadIRFromFile (grooveIrFile);
-        juce::Logger::writeToLog("Preset: Groove Metal (Walk + Pantera Cowboys IR)");
+        case Thrash:
+            loadNAMFromFile(thrashNamFile);
+            loadIRFromFile (thrashIrFile);
+            statusText = "Mesa Boogie Mark IIC+  /  4x12 Mesa Rectifier sm57";
+            break;
+        case GrooveMetal:
+            loadNAMFromFile(grooveNamFile);
+            loadIRFromFile (grooveIrFile);
+            statusText = "Pantera Walk  /  Pantera Cowboys From Hell IR";
+            break;
+        case Custom:
+            // Don't change loaded NAM/IR — user manages via Load buttons / drag-drop
+            statusText = "Custom — drag your own .nam and .wav files onto the window";
+            break;
+        default:
+            statusText = juce::String(info.displayName) + " — coming soon (drop files via Custom)";
+            break;
     }
 }
 

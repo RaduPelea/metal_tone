@@ -12,6 +12,28 @@
 class UltimateMetalToneProcessor : public juce::AudioProcessor
 {
 public:
+    // ── Preset enum / metadata ─────────────────────────────────────────────
+    enum Preset
+    {
+        Thrash = 0,
+        GrooveMetal,
+        HeavyMetal,
+        DeathMetal,
+        BlackMetal,
+        DoomMetal,
+        ProgressiveMetal,
+        Custom,
+        NumPresets
+    };
+
+    struct PresetInfo
+    {
+        const char* displayName;
+        bool        available;       // false = placeholder, no NAM/IR yet
+        bool        userLoadable;    // true only for Custom — enables drag-drop / load buttons
+    };
+    static const PresetInfo& getPresetInfo(Preset);
+
     UltimateMetalToneProcessor();
     ~UltimateMetalToneProcessor() override;
 
@@ -42,15 +64,14 @@ public:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     juce::AudioProcessorValueTreeState apvts;
 
-    // Public API for editor
+    // ── Public API for editor ────────────────────────────────────────────
     bool loadNAMFromFile(const juce::File& file);
     bool loadIRFromFile (const juce::File& file);
     juce::String getNAMName() const { return namName; }
     juce::String getIRName () const { return irName;  }
+    juce::String getStatusText() const { return statusText; }
 
-    // Presets
-    enum Preset { ThrashPreset = 0, GroovePreset = 1 };
-    void loadPreset(Preset p);
+    void   loadPreset(Preset p);
     Preset getCurrentPreset() const { return currentPreset; }
 
 private:
@@ -61,15 +82,13 @@ private:
     std::unique_ptr<dsp::ImpulseResponse> irProcessor, stagedIr;
     std::atomic<bool> namPending {false}, irPending {false};
     juce::SpinLock    swapLock;
-    juce::String      namName, irName;
+    juce::String      namName, irName, statusText;
     juce::File        irFileForReload;
 
-    Preset currentPreset = ThrashPreset;
+    Preset currentPreset = Thrash;
 
-    // NAM I/O buffers (double precision)
     std::vector<double> namIn, namOut;
 
-    // 3-band tone stack
     using Filter    = juce::dsp::IIR::Filter<float>;
     using FilterCfs = juce::dsp::IIR::Coefficients<float>;
     using DupFilter = juce::dsp::ProcessorDuplicator<Filter, FilterCfs>;
@@ -77,15 +96,12 @@ private:
     float lastBass = 0.f, lastMid = 0.f, lastTreble = 0.f;
     void  updateEQ();
 
-    // Noise gate
     float gateEnv = 0.f;
     float gateAttackCoef = 0.f, gateRelCoef = 0.f;
 
-    // Audio state
     double currentSR  = 44100.0;
     int    currentBSz = 512;
 
-    // Default file paths in %APPDATA%/UltimateMetalTone/
     juce::File appDataDir;
     juce::File thrashNamFile, thrashIrFile;
     juce::File grooveNamFile, grooveIrFile;
