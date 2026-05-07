@@ -40,6 +40,36 @@ private:
     bool         hover  = false;
 };
 
+// ── Pedal slot (empty placeholder) ───────────────────────────────────────────
+
+class PedalSlot : public juce::Component
+{
+public:
+    PedalSlot(int index);
+    void paint(juce::Graphics&) override;
+    void mouseEnter(const juce::MouseEvent&) override { hover = true;  repaint(); }
+    void mouseExit (const juce::MouseEvent&) override { hover = false; repaint(); }
+    void mouseUp   (const juce::MouseEvent&) override;
+private:
+    int  slotIndex;
+    bool hover = false;
+};
+
+// ── Round + button ───────────────────────────────────────────────────────────
+
+class AddButton : public juce::Component
+{
+public:
+    std::function<void()> onClick;
+    void paint(juce::Graphics&) override;
+    void mouseEnter(const juce::MouseEvent&) override { hover = true;  repaint(); }
+    void mouseExit (const juce::MouseEvent&) override { hover = false; repaint(); }
+    void mouseDown (const juce::MouseEvent&) override { down  = true;  repaint(); }
+    void mouseUp   (const juce::MouseEvent&) override;
+private:
+    bool hover = false, down = false;
+};
+
 // ── Editor ───────────────────────────────────────────────────────────────────
 
 class UltimateMetalToneEditor : public juce::AudioProcessorEditor,
@@ -66,6 +96,11 @@ private:
     void refreshPresetHighlights();
     void updateCustomVisibility();
 
+    // Helper drawings
+    void drawAmpHead     (juce::Graphics&, juce::Rectangle<int>);
+    void drawPedalboardBg(juce::Graphics&, juce::Rectangle<int>);
+    void drawScrew       (juce::Graphics&, float cx, float cy, float r);
+
     struct Knob : public juce::Component
     {
         juce::Slider slider;
@@ -82,12 +117,19 @@ private:
     using Att = juce::AudioProcessorValueTreeState::SliderAttachment;
     Att aGain, aGate, aBass, aMid, aTreble, aMaster;
 
-    juce::Label    titleLabel, subtitleLabel, statusLabel, sidebarLabel;
+    juce::Label    titleLabel, subtitleLabel, statusLabel, sidebarLabel,
+                    pedalboardLabel, ampLogoLabel;
     juce::Label    namLabel, irLabel;
     juce::TextButton btnLoadNam { "LOAD NAM" };
     juce::TextButton btnLoadIr  { "LOAD IR"  };
 
     juce::OwnedArray<PresetRow> presetRows;
+    juce::OwnedArray<PedalSlot> pedalSlots;
+    AddButton                    addPedalBtn;
+
+    // Cached layout rectangles for paint() to draw chassis around components
+    juce::Rectangle<int> ampHeadArea;
+    juce::Rectangle<int> pedalboardArea;
 
     std::unique_ptr<juce::FileChooser> fileChooser;
 
