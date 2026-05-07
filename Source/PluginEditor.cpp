@@ -1,184 +1,217 @@
 #include "PluginEditor.h"
 
-// ── Colours ───────────────────────────────────────────────────────────────────
-static const juce::Colour BG_DARK   { 0xff1a1a1a };
-static const juce::Colour BG_PANEL  { 0xff252525 };
-static const juce::Colour AMBER     { 0xffe8a020 };
-static const juce::Colour AMBER_DIM { 0xff7a5010 };
-static const juce::Colour CREAM     { 0xffe0d8c8 };
-static const juce::Colour RED_DARK  { 0xff6b0000 };
+static const juce::Colour BG       { 0xff1a1a1a };
+static const juce::Colour PANEL    { 0xff262626 };
+static const juce::Colour AMBER    { 0xffe8a020 };
+static const juce::Colour AMBER_DIM{ 0xff7a5010 };
+static const juce::Colour CREAM    { 0xffe0d8c8 };
 
-// ── MetallicaLookAndFeel ─────────────────────────────────────────────────────
+// ─── Knob ─────────────────────────────────────────────────────────────────────
 
-MetallicaLookAndFeel::MetallicaLookAndFeel()
-{
-    setColour(juce::Slider::thumbColourId,            AMBER);
-    setColour(juce::Slider::rotarySliderFillColourId, AMBER);
-    setColour(juce::Slider::rotarySliderOutlineColourId, AMBER_DIM);
-    setColour(juce::Label::textColourId, CREAM);
-}
-
-void MetallicaLookAndFeel::drawRotarySlider(
-    juce::Graphics& g, int x, int y, int w, int h,
-    float sliderPos, float startAngle, float endAngle, juce::Slider&)
-{
-    const float radius = (float)std::min(w, h) / 2.0f - 4.0f;
-    const float cx = (float)x + (float)w / 2.0f;
-    const float cy = (float)y + (float)h / 2.0f;
-
-    // Background disc
-    g.setColour(BG_PANEL);
-    g.fillEllipse(cx - radius, cy - radius, radius * 2, radius * 2);
-
-    // Arc track
-    juce::Path track;
-    track.addCentredArc(cx, cy, radius - 3, radius - 3,
-                        0.0f, startAngle, endAngle, true);
-    g.setColour(AMBER_DIM);
-    g.strokePath(track, juce::PathStrokeType(3.0f));
-
-    // Filled arc
-    juce::Path fill;
-    fill.addCentredArc(cx, cy, radius - 3, radius - 3,
-                       0.0f, startAngle, startAngle + (endAngle - startAngle) * sliderPos, true);
-    g.setColour(AMBER);
-    g.strokePath(fill, juce::PathStrokeType(3.0f));
-
-    // Pointer
-    const float angle = startAngle + sliderPos * (endAngle - startAngle);
-    const float px = cx + (radius - 6) * std::sin(angle);
-    const float py = cy - (radius - 6) * std::cos(angle);
-    g.setColour(CREAM);
-    g.fillEllipse(px - 3.5f, py - 3.5f, 7.0f, 7.0f);
-
-    // Tick marks at 0, 5, 10
-    for (int t = 0; t <= 10; t += 5)
-    {
-        float ta = startAngle + ((float)t / 10.0f) * (endAngle - startAngle);
-        float ox = cx + (radius + 2) * std::sin(ta);
-        float oy = cy - (radius + 2) * std::cos(ta);
-        g.setColour(t == 5 ? AMBER : AMBER_DIM);
-        g.fillEllipse(ox - 2.0f, oy - 2.0f, 4.0f, 4.0f);
-    }
-}
-
-void MetallicaLookAndFeel::drawLabel(juce::Graphics& g, juce::Label& label)
-{
-    g.setColour(label.findColour(juce::Label::textColourId));
-    g.setFont(label.getFont());
-    g.drawFittedText(label.getText(), label.getLocalBounds(), label.getJustificationType(), 1);
-}
-
-// ── AmpKnob ───────────────────────────────────────────────────────────────────
-
-AmpKnob::AmpKnob(const juce::String& name)
+MetalToneEditor::Knob::Knob(const juce::String& name)
 {
     slider.setSliderStyle(juce::Slider::RotaryVerticalDrag);
-    slider.setRange(0.0, 10.0, 0.01);
-    slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 60, 16);
+    slider.setColour(juce::Slider::thumbColourId,            AMBER);
+    slider.setColour(juce::Slider::rotarySliderFillColourId, AMBER);
+    slider.setColour(juce::Slider::rotarySliderOutlineColourId, AMBER_DIM);
+    slider.setColour(juce::Slider::textBoxTextColourId,      AMBER);
+    slider.setColour(juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
+    slider.setColour(juce::Slider::textBoxOutlineColourId,    juce::Colours::transparentBlack);
     addAndMakeVisible(slider);
 
-    nameLabel.setText(name, juce::dontSendNotification);
-    nameLabel.setJustificationType(juce::Justification::centred);
-    nameLabel.setFont(juce::Font(juce::FontOptions{}.withHeight(11.0f).withStyle("Bold")));
-    nameLabel.setColour(juce::Label::textColourId, CREAM);
-    addAndMakeVisible(nameLabel);
-
-    valueLabel.setJustificationType(juce::Justification::centred);
-    valueLabel.setFont(juce::Font(juce::FontOptions{}.withHeight(13.0f).withStyle("Bold")));
-    valueLabel.setColour(juce::Label::textColourId, AMBER);
-    addAndMakeVisible(valueLabel);
-
-    slider.onValueChange = [this]
-    {
-        valueLabel.setText(juce::String(slider.getValue(), 1), juce::dontSendNotification);
-    };
-    valueLabel.setText(juce::String(slider.getValue(), 1), juce::dontSendNotification);
+    caption.setText(name, juce::dontSendNotification);
+    caption.setJustificationType(juce::Justification::centred);
+    caption.setFont(juce::Font(juce::FontOptions{}.withHeight(11.0f).withStyle("Bold")));
+    caption.setColour(juce::Label::textColourId, CREAM);
+    addAndMakeVisible(caption);
 }
 
-void AmpKnob::resized()
+void MetalToneEditor::Knob::resized()
 {
     auto b = getLocalBounds();
-    nameLabel.setBounds(b.removeFromTop(16));
-    valueLabel.setBounds(b.removeFromBottom(18));
+    caption.setBounds(b.removeFromTop(14));
     slider.setBounds(b);
 }
 
-// ── MetallicaToneEditor ───────────────────────────────────────────────────────
+// ─── Editor ───────────────────────────────────────────────────────────────────
 
-MetallicaToneEditor::MetallicaToneEditor(MetallicaToneProcessor& p)
+MetalToneEditor::MetalToneEditor(MetalToneProcessor& p)
     : AudioProcessorEditor(p), processor(p),
-      kGain("GAIN"), kGate("GATE"), kBass("BASS"), kMid("MID"),
-      kTreble("TREBLE"), kMaster("MASTER"), kCabMix("CAB MIX"),
-      attGain(p.apvts, "gain", kGain.slider),
-      attGate(p.apvts, "gate", kGate.slider),
-      attBass(p.apvts, "bass", kBass.slider),
-      attMid   (p.apvts, "mid",       kMid.slider),
-      attTreble(p.apvts, "treble",    kTreble.slider),
-      attMaster(p.apvts, "master",    kMaster.slider),
-      attCabMix(p.apvts, "cabMix",    kCabMix.slider)
+      kInput("INPUT"), kGate("GATE"), kBass("BASS"),
+      kMid("MID"), kTreble("TREBLE"), kMaster("MASTER"),
+      aInput (p.apvts, "inputGain", kInput.slider),
+      aGate  (p.apvts, "gate",       kGate.slider),
+      aBass  (p.apvts, "bass",       kBass.slider),
+      aMid   (p.apvts, "mid",        kMid.slider),
+      aTreble(p.apvts, "treble",     kTreble.slider),
+      aMaster(p.apvts, "master",     kMaster.slider)
 {
-    setLookAndFeel(&laf);
-
-    for (auto* k : { &kGain, &kGate, &kBass, &kMid, &kTreble, &kMaster, &kCabMix })
-        addAndMakeVisible(k);
-
-    // Title
-    titleLabel.setText("METALLICA TONE", juce::dontSendNotification);
-    titleLabel.setFont(juce::Font(juce::FontOptions{}.withHeight(22.0f).withStyle("Bold")));
-    titleLabel.setColour(juce::Label::textColourId, AMBER);
+    titleLabel.setText("METAL TONE  —  NAM + IR", juce::dontSendNotification);
+    titleLabel.setFont(juce::Font(juce::FontOptions{}.withHeight(20.f).withStyle("Bold")));
     titleLabel.setJustificationType(juce::Justification::centred);
+    titleLabel.setColour(juce::Label::textColourId, AMBER);
     addAndMakeVisible(titleLabel);
 
-    // Preset subtitle
-    presetLabel.setText("THRASH PRESET  |  Mesa Boogie IIC+  |  4x12 Rectifier sm57",
-                        juce::dontSendNotification);
-    presetLabel.setFont(juce::Font(juce::FontOptions{}.withHeight(11.0f)));
-    presetLabel.setColour(juce::Label::textColourId, CREAM);
-    presetLabel.setJustificationType(juce::Justification::centred);
-    addAndMakeVisible(presetLabel);
+    auto styleFileLabel = [](juce::Label& l)
+    {
+        l.setColour(juce::Label::textColourId, CREAM);
+        l.setColour(juce::Label::backgroundColourId, PANEL);
+        l.setColour(juce::Label::outlineColourId, AMBER_DIM);
+        l.setFont(juce::Font(juce::FontOptions{}.withHeight(13.f)));
+        l.setJustificationType(juce::Justification::centredLeft);
+        l.setBorderSize({ 4, 8, 4, 8 });
+    };
+    styleFileLabel(namLabel);
+    styleFileLabel(irLabel);
+    namLabel.setText("NAM:  (loading...)", juce::dontSendNotification);
+    irLabel .setText("IR:   (loading...)", juce::dontSendNotification);
+    addAndMakeVisible(namLabel);
+    addAndMakeVisible(irLabel);
 
-    setSize(780, 280);
+    auto styleButton = [](juce::TextButton& b)
+    {
+        b.setColour(juce::TextButton::buttonColourId, PANEL);
+        b.setColour(juce::TextButton::textColourOffId, AMBER);
+        b.setColour(juce::ComboBox::outlineColourId, AMBER_DIM);
+    };
+    styleButton(btnLoadNam);
+    styleButton(btnLoadIr);
+    btnLoadNam.onClick = [this] { chooseNAM(); };
+    btnLoadIr .onClick = [this] { chooseIR();  };
+    addAndMakeVisible(btnLoadNam);
+    addAndMakeVisible(btnLoadIr);
+
+    for (auto* k : { &kInput, &kGate, &kBass, &kMid, &kTreble, &kMaster })
+        addAndMakeVisible(k);
+
+    setSize(640, 320);
+    startTimerHz(10);
 }
 
-MetallicaToneEditor::~MetallicaToneEditor()
+MetalToneEditor::~MetalToneEditor() { stopTimer(); }
+
+// ─── Layout / paint ───────────────────────────────────────────────────────────
+
+void MetalToneEditor::paint(juce::Graphics& g)
 {
-    setLookAndFeel(nullptr);
-}
+    g.fillAll(BG);
 
-void MetallicaToneEditor::paint(juce::Graphics& g)
-{
-    g.fillAll(BG_DARK);
-
-    // Panel behind knobs
-    g.setColour(BG_PANEL);
-    g.fillRoundedRectangle(getLocalBounds().reduced(8).toFloat().withTrimmedTop(54), 8.0f);
-
-    // Thin amber top border line
+    // Top accent line
     g.setColour(AMBER);
     g.fillRect(0, 0, getWidth(), 2);
 
-    // Separator lines between knobs
-    g.setColour(AMBER_DIM);
-    const int knobW = (getWidth() - 16) / 6;
-    for (int i = 1; i < 6; ++i)
+    // Drop highlight
+    if (dragHighlight)
     {
-        int lx = 8 + i * knobW;
-        g.fillRect(lx, 60, 1, getHeight() - 68);
+        g.setColour(AMBER.withAlpha(0.3f));
+        g.fillRoundedRectangle(getLocalBounds().toFloat().reduced(4.f), 6.f);
     }
 }
 
-void MetallicaToneEditor::resized()
+void MetalToneEditor::resized()
 {
     auto b = getLocalBounds().reduced(8);
 
     titleLabel.setBounds(b.removeFromTop(28));
-    presetLabel.setBounds(b.removeFromTop(18));
-    b.removeFromTop(4);  // gap
+    b.removeFromTop(4);
 
-    const int knobW = b.getWidth() / 6;
-    for (auto* k : { &kGain, &kGate, &kBass, &kMid, &kTreble, &kMaster, &kCabMix })
+    // File rows
+    auto fileRow = [&](juce::Label& lbl, juce::TextButton& btn)
     {
-        k->setBounds(b.removeFromLeft(knobW));
+        auto row = b.removeFromTop(26);
+        btn.setBounds(row.removeFromRight(110));
+        row.removeFromRight(6);
+        lbl.setBounds(row);
+        b.removeFromTop(4);
+    };
+    fileRow(namLabel, btnLoadNam);
+    fileRow(irLabel,  btnLoadIr);
+
+    b.removeFromTop(8);
+
+    // 6 knobs in a row
+    const int knobW = b.getWidth() / 6;
+    for (auto* k : { &kInput, &kGate, &kBass, &kMid, &kTreble, &kMaster })
+        k->setBounds(b.removeFromLeft(knobW).reduced(2));
+}
+
+// ─── Timer (refresh file labels) ─────────────────────────────────────────────
+
+void MetalToneEditor::timerCallback()
+{
+    auto nm = "NAM:  " + processor.getNAMName();
+    if (namLabel.getText() != nm) namLabel.setText(nm, juce::dontSendNotification);
+
+    auto ir = "IR:   " + processor.getIRName();
+    if (irLabel.getText() != ir)  irLabel.setText(ir,  juce::dontSendNotification);
+}
+
+// ─── File chooser ────────────────────────────────────────────────────────────
+
+void MetalToneEditor::chooseNAM()
+{
+    fileChooser = std::make_unique<juce::FileChooser>(
+        "Select a .nam file", juce::File{}, "*.nam");
+
+    fileChooser->launchAsync(
+        juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+        [this](const juce::FileChooser& fc)
+        {
+            auto f = fc.getResult();
+            if (f.existsAsFile()) processor.loadNAMFromFile(f);
+        });
+}
+
+void MetalToneEditor::chooseIR()
+{
+    fileChooser = std::make_unique<juce::FileChooser>(
+        "Select an IR (.wav)", juce::File{}, "*.wav;*.aif;*.aiff");
+
+    fileChooser->launchAsync(
+        juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+        [this](const juce::FileChooser& fc)
+        {
+            auto f = fc.getResult();
+            if (f.existsAsFile()) processor.loadIRFromFile(f);
+        });
+}
+
+// ─── Drag & drop ─────────────────────────────────────────────────────────────
+
+bool MetalToneEditor::isInterestedInFileDrag(const juce::StringArray& files)
+{
+    for (auto& f : files)
+    {
+        auto lc = f.toLowerCase();
+        if (lc.endsWith(".nam") || lc.endsWith(".wav") ||
+            lc.endsWith(".aif") || lc.endsWith(".aiff"))
+            return true;
+    }
+    return false;
+}
+
+void MetalToneEditor::fileDragEnter(const juce::StringArray&, int, int)
+{
+    dragHighlight = true; repaint();
+}
+
+void MetalToneEditor::fileDragExit(const juce::StringArray&)
+{
+    dragHighlight = false; repaint();
+}
+
+void MetalToneEditor::filesDropped(const juce::StringArray& files, int, int)
+{
+    dragHighlight = false; repaint();
+
+    for (auto& f : files)
+    {
+        juce::File file(f);
+        auto lc = f.toLowerCase();
+        if (lc.endsWith(".nam"))
+            processor.loadNAMFromFile(file);
+        else if (lc.endsWith(".wav") || lc.endsWith(".aif") || lc.endsWith(".aiff"))
+            processor.loadIRFromFile(file);
     }
 }

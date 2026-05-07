@@ -2,138 +2,182 @@
 #include "PluginEditor.h"
 #include "BinaryData.h"
 #include <cmath>
+#include <filesystem>
 
 namespace ParamIDs
 {
-    static const juce::String gain      = "gain";       // 0-10  preamp drive into NAM
-    static const juce::String gate      = "gate";       // 0-10  noise gate threshold
-    static const juce::String bass      = "bass";       // 0-10
-    static const juce::String mid       = "mid";        // 0-10
-    static const juce::String treble    = "treble";     // 0-10
-    static const juce::String master    = "master";     // 0-10
-    static const juce::String cabMix    = "cabMix";     // 0-10
+    static const juce::String inputGain = "inputGain";
+    static const juce::String gate      = "gate";
+    static const juce::String bass      = "bass";
+    static const juce::String mid       = "mid";
+    static const juce::String treble    = "treble";
+    static const juce::String master    = "master";
 }
 
-// ─── Parameter layout ────────────────────────────────────────────────────────
+// ── Parameter layout ────────────────────────────────────────────────────────
 
-juce::AudioProcessorValueTreeState::ParameterLayout MetallicaToneProcessor::createParameterLayout()
+juce::AudioProcessorValueTreeState::ParameterLayout
+MetalToneProcessor::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> p;
-    auto dial = [&](const juce::String& id, const juce::String& name, float def)
+
+    auto db = [&](const juce::String& id, const juce::String& name,
+                   float lo, float hi, float def)
     {
         p.push_back(std::make_unique<juce::AudioParameterFloat>(
             juce::ParameterID(id, 1), name,
-            juce::NormalisableRange<float>(0.0f, 10.0f, 0.01f), def));
+            juce::NormalisableRange<float>(lo, hi, 0.1f), def,
+            juce::AudioParameterFloatAttributes().withLabel("dB")));
     };
-    dial(ParamIDs::gain,   "Gain",   6.0f);
-    dial(ParamIDs::gate,   "Gate",   3.0f);
-    dial(ParamIDs::bass,   "Bass",   5.0f);   // 5 = flat, all EQ user-controlled
-    dial(ParamIDs::mid,    "Mid",    5.0f);
-    dial(ParamIDs::treble, "Treble", 5.0f);
-    dial(ParamIDs::master, "Master", 7.0f);
-    dial(ParamIDs::cabMix, "Cab Mix",10.0f);
+
+    db(ParamIDs::inputGain, "Input",  -24.0f,  24.0f, 0.0f);
+    db(ParamIDs::gate,      "Gate",  -100.0f,   0.0f, -100.0f);   // -100 = off
+    db(ParamIDs::bass,      "Bass",   -12.0f,  12.0f, 0.0f);
+    db(ParamIDs::mid,       "Mid",    -12.0f,  12.0f, 0.0f);
+    db(ParamIDs::treble,    "Treble", -12.0f,  12.0f, 0.0f);
+    db(ParamIDs::master,    "Master", -24.0f,  24.0f, 0.0f);
+
     return { p.begin(), p.end() };
 }
 
-// ─── Helpers: 0-10 knob → parameter ─────────────────────────────────────────
-// GAIN: exponential  0→1×  5→~6×  10→40×  (more headroom for palm mutes)
-static double dialToPreBoost(float v)    { return std::pow(40.0, static_cast<double>(v) / 10.0); }
-// GATE: 0→-inf (off)  1→-80dB  10→-20dB  (threshold before NAM)
-static float dialToGateThreshLin(float v)
-{
-    if (v < 0.05f) return 0.f;                          // 0 = gate fully off
-    float db = -80.0f + (v / 10.0f) * 60.0f;           // -80 dB .. -20 dB
-    return juce::Decibels::decibelsToGain(db);
-}
-static float dialToEqDb(float v)         { return (v / 5.0f - 1.0f) * 12.0f; }
-static float dialToMasterDb(float v)     { return (v / 5.0f - 1.0f) * 18.0f; }
-static float dialToCabMix(float v)       { return v / 10.0f; }
+// ── Constructor ─────────────────────────────────────────────────────────────
 
-// ─── Constructor ─────────────────────────────────────────────────────────────
-
-MetallicaToneProcessor::MetallicaToneProcessor()
+MetalToneProcessor::MetalToneProcessor()
     : AudioProcessor(BusesProperties()
                      .withInput ("Input",  juce::AudioChannelSet::mono(),   true)
                      .withOutput("Output", juce::AudioChannelSet::stereo(), true)),
       apvts(*this, nullptr, "Parameters", createParameterLayout())
 {
-    // Write embedded assets to AppData so they survive across sessions
-    juce::File dir = juce::File::getSpecialLocation(
-        juce::File::userApplicationDataDirectory).getChildFile("MetallicaTone");
-    dir.createDirectory();
+    appDataDir = juce::File::getSpecialLocation(
+        juce::File::userApplicationDataDirectory).getChildFile("MetalTone");
+    appDataDir.createDirectory();
 
-    namFilePath = dir.getChildFile("DethLead.nam");
-    namFilePath.replaceWithData(BinaryData::DethLead_nam, BinaryData::DethLead_namSize);
-
-    irFilePath = dir.getChildFile("sm57.wav");
-    irFilePath.replaceWithData(BinaryData::sm57_wav, BinaryData::sm57_wavSize);
-
-    // Set up file logger so we can see what's happening
-    juce::File logFile = dir.getChildFile("debug.log");
     juce::Logger::setCurrentLogger(
-        new juce::FileLogger(logFile, "MetallicaTone Debug Log"));
+        new juce::FileLogger(appDataDir.getChildFile("debug.log"),
+                             "MetalTone debug log"));
 
-    juce::Logger::writeToLog("NAM path:   " + namFilePath.getFullPathName());
-    juce::Logger::writeToLog("NAM exists: " + juce::String((int)namFilePath.existsAsFile()));
-    juce::Logger::writeToLog("NAM size:   " + juce::String(namFilePath.getSize()));
-    juce::Logger::writeToLog("IR path:    " + irFilePath.getFullPathName());
+    writeDefaultsToDisk();
 
-    loadNAM();
+    defaultNamFile = appDataDir.getChildFile("DethLead.nam");
+    defaultIrFile  = appDataDir.getChildFile("sm57.wav");
+
+    juce::Logger::writeToLog("Default NAM: " + defaultNamFile.getFullPathName());
+    juce::Logger::writeToLog("Default IR:  " + defaultIrFile.getFullPathName());
+
+    loadNAMFromFile(defaultNamFile);
+    loadIRFromFile (defaultIrFile);
 }
 
-// ─── prepareToPlay ────────────────────────────────────────────────────────────
+MetalToneProcessor::~MetalToneProcessor()
+{
+    juce::Logger::setCurrentLogger(nullptr);
+}
 
-void MetallicaToneProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
+void MetalToneProcessor::writeDefaultsToDisk()
+{
+    juce::File namFile = appDataDir.getChildFile("DethLead.nam");
+    namFile.replaceWithData(BinaryData::DethLead_nam, BinaryData::DethLead_namSize);
+
+    juce::File irFile = appDataDir.getChildFile("sm57.wav");
+    irFile.replaceWithData(BinaryData::sm57_wav, BinaryData::sm57_wavSize);
+}
+
+// ── File loading ────────────────────────────────────────────────────────────
+
+bool MetalToneProcessor::loadNAMFromFile(const juce::File& file)
+{
+    if (!file.existsAsFile())
+    {
+        juce::Logger::writeToLog("loadNAM: file missing " + file.getFullPathName());
+        return false;
+    }
+
+    try
+    {
+        auto path = std::filesystem::path(file.getFullPathName().toWideCharPointer());
+        auto newModel = nam::get_dsp(path);
+        if (!newModel) return false;
+
+        // Reset to current settings before staging so the audio thread can use it immediately
+        newModel->Reset(currentSR, currentBSz);
+        newModel->prewarm();
+
+        {
+            juce::SpinLock::ScopedLockType lk(swapLock);
+            stagedNam = std::move(newModel);
+            namPending.store(true);
+            namName = file.getFileName();
+        }
+        juce::Logger::writeToLog("NAM loaded: " + namName);
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        juce::Logger::writeToLog("loadNAM exception: " + juce::String(e.what()));
+        return false;
+    }
+}
+
+bool MetalToneProcessor::loadIRFromFile(const juce::File& file)
+{
+    if (!file.existsAsFile())
+    {
+        juce::Logger::writeToLog("loadIR: file missing " + file.getFullPathName());
+        return false;
+    }
+
+    try
+    {
+        auto newIR = std::make_unique<dsp::ImpulseResponse>(
+            file.getFullPathName().toRawUTF8(), currentSR);
+
+        if (newIR->GetWavState() != dsp::wav::LoadReturnCode::SUCCESS)
+        {
+            juce::Logger::writeToLog("loadIR: bad wav state");
+            return false;
+        }
+
+        {
+            juce::SpinLock::ScopedLockType lk(swapLock);
+            stagedIr = std::move(newIR);
+            irPending.store(true);
+            irName = file.getFileName();
+            irFileForReload = file;
+        }
+        juce::Logger::writeToLog("IR loaded: " + irName);
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        juce::Logger::writeToLog("loadIR exception: " + juce::String(e.what()));
+        return false;
+    }
+}
+
+// ── prepareToPlay ───────────────────────────────────────────────────────────
+
+void MetalToneProcessor::prepareToPlay(double sampleRate, int samplesPerBlock)
 {
     currentSR  = sampleRate;
     currentBSz = samplesPerBlock;
 
-    namIn .resize(static_cast<size_t>(samplesPerBlock * 2), 0.0);
-    namOut.resize(static_cast<size_t>(samplesPerBlock * 2), 0.0);
-
-    // Noise gate envelope coefficients (1 ms attack, 80 ms release)
-    gateAttackCoef = std::exp(-1.0f / (static_cast<float>(sampleRate) * 0.001f));
-    gateRelCoef    = std::exp(-1.0f / (static_cast<float>(sampleRate) * 0.080f));
-    gateEnv        = 0.f;
-
-    if (!namModel)
-        loadNAM();   // retry if constructor load failed
+    namIn .resize(static_cast<size_t>(samplesPerBlock) * 2, 0.0);
+    namOut.resize(static_cast<size_t>(samplesPerBlock) * 2, 0.0);
 
     if (namModel)
     {
         namModel->Reset(sampleRate, samplesPerBlock);
         namModel->prewarm();
-        juce::Logger::writeToLog("NAM reset OK at " + juce::String(sampleRate) + " Hz");
-    }
-    else
-    {
-        juce::Logger::writeToLog("NAM model is NULL in prepareToPlay!");
     }
 
-    // Load IR with the actual device sample rate
-    if (irFilePath.existsAsFile())
-    {
-        try
-        {
-            auto ir = std::make_unique<dsp::ImpulseResponse>(
-                irFilePath.getFullPathName().toRawUTF8(), sampleRate);
-            if (ir->GetWavState() == dsp::wav::LoadReturnCode::SUCCESS)
-            {
-                irProcessor = std::move(ir);
-                juce::Logger::writeToLog("IR loaded OK");
-            }
-            else
-                juce::Logger::writeToLog("IR wav state failed");
-        }
-        catch (const std::exception& e)
-        {
-            juce::Logger::writeToLog("IR exception: " + juce::String(e.what()));
-        }
-    }
-    else
-    {
-        juce::Logger::writeToLog("IR file missing: " + irFilePath.getFullPathName());
-    }
+    // IR is sample-rate dependent — reload from the remembered file at the new SR
+    if (irFileForReload.existsAsFile())
+        loadIRFromFile(irFileForReload);
+
+    // Gate envelope coefficients (1 ms attack, 80 ms release)
+    gateAttackCoef = std::exp(-1.0f / (static_cast<float>(sampleRate) * 0.001f));
+    gateRelCoef    = std::exp(-1.0f / (static_cast<float>(sampleRate) * 0.080f));
+    gateEnv        = 0.f;
 
     juce::dsp::ProcessSpec spec;
     spec.sampleRate       = sampleRate;
@@ -141,43 +185,42 @@ void MetallicaToneProcessor::prepareToPlay(double sampleRate, int samplesPerBloc
     spec.numChannels      = static_cast<juce::uint32>(
         std::max(1, getTotalNumOutputChannels()));
 
-    bassFilter.prepare(spec);     bassFilter.reset();
-    midFilter.prepare(spec);      midFilter.reset();
-    trebleFilter.prepare(spec);   trebleFilter.reset();
+    bassFilter.prepare(spec);   bassFilter.reset();
+    midFilter.prepare(spec);    midFilter.reset();
+    trebleFilter.prepare(spec); trebleFilter.reset();
 
+    lastBass = lastMid = lastTreble = 1e9f;   // force coef recalc next block
     updateEQ();
 }
 
-// ─── EQ coefficients ─────────────────────────────────────────────────────────
+// ── EQ ───────────────────────────────────────────────────────────────────────
 
-void MetallicaToneProcessor::updateEQ()
+void MetalToneProcessor::updateEQ()
 {
     if (currentSR <= 0.0) return;
 
-    float bassDb   = dialToEqDb(apvts.getRawParameterValue(ParamIDs::bass)->load());
-    float midDb    = dialToEqDb(apvts.getRawParameterValue(ParamIDs::mid)->load());
-    float trebleDb = dialToEqDb(apvts.getRawParameterValue(ParamIDs::treble)->load());
+    float bassDb   = apvts.getRawParameterValue(ParamIDs::bass)->load();
+    float midDb    = apvts.getRawParameterValue(ParamIDs::mid)->load();
+    float trebleDb = apvts.getRawParameterValue(ParamIDs::treble)->load();
 
-    float bassG   = juce::Decibels::decibelsToGain(bassDb);
-    float midG    = juce::Decibels::decibelsToGain(midDb);
-    float trebleG = juce::Decibels::decibelsToGain(trebleDb);
+    if (bassDb == lastBass && midDb == lastMid && trebleDb == lastTreble)
+        return;
+    lastBass = bassDb; lastMid = midDb; lastTreble = trebleDb;
 
-    // Bass : low shelf  250 Hz — controls body/warmth
-    // Mid  : peak      1000 Hz Q=1.5 — scoop here preserves 200-600Hz "chunk"
-    //        (849Hz was cutting too low, making low notes muffled)
-    // Treble: high shelf 3500 Hz — presence/bite
-    auto bassCoefs = FilterCfs::makeLowShelf  (currentSR, 250.0f,  0.71f, bassG);
-    auto midCoefs  = FilterCfs::makePeakFilter(currentSR, 1000.0f, 1.5f,  midG);
-    auto trebCoefs = FilterCfs::makeHighShelf (currentSR, 3000.0f, 0.71f, trebleG);  // was 3500
-
+    auto bassCoefs = FilterCfs::makeLowShelf(currentSR, 250.0f, 0.71f,
+                                              juce::Decibels::decibelsToGain(bassDb));
+    auto midCoefs  = FilterCfs::makePeakFilter(currentSR, 800.0f, 1.0f,
+                                                 juce::Decibels::decibelsToGain(midDb));
+    auto trebCoefs = FilterCfs::makeHighShelf(currentSR, 4000.0f, 0.71f,
+                                                juce::Decibels::decibelsToGain(trebleDb));
     if (bassCoefs)   *bassFilter.state   = *bassCoefs;
     if (midCoefs)    *midFilter.state    = *midCoefs;
     if (trebCoefs)   *trebleFilter.state = *trebCoefs;
 }
 
-// ─── Buses ───────────────────────────────────────────────────────────────────
+// ── Buses ───────────────────────────────────────────────────────────────────
 
-bool MetallicaToneProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
+bool MetalToneProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
     auto mono   = juce::AudioChannelSet::mono();
     auto stereo = juce::AudioChannelSet::stereo();
@@ -186,102 +229,95 @@ bool MetallicaToneProcessor::isBusesLayoutSupported(const BusesLayout& layouts) 
     return (in == mono || in == stereo) && (out == mono || out == stereo);
 }
 
-// ─── processBlock ────────────────────────────────────────────────────────────
+// ── processBlock ────────────────────────────────────────────────────────────
 
-void MetallicaToneProcessor::processBlock(juce::AudioBuffer<float>& buffer,
-                                           juce::MidiBuffer&)
+void MetalToneProcessor::processBlock(juce::AudioBuffer<float>& buffer,
+                                        juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
     const int numSamples = buffer.getNumSamples();
     const int numOut     = getTotalNumOutputChannels();
+    if (numSamples == 0 || numOut == 0) return;
 
-    // Clear channels > 0 (we process mono on ch0)
+    // ── 1. Apply pending NAM/IR swaps (under spin lock, only at block start) ──
+    if (namPending.load() || irPending.load())
+    {
+        juce::SpinLock::ScopedLockType lk(swapLock);
+        if (namPending.exchange(false))
+            namModel = std::move(stagedNam);
+        if (irPending.exchange(false))
+            irProcessor = std::move(stagedIr);
+    }
+
+    // Clear all channels above 0
     for (int ch = 1; ch < numOut; ++ch)
         buffer.clear(ch, 0, numSamples);
 
-    // ── EQ update (only when a knob changed) ─────────────────────────────────
-    {
-        float b = apvts.getRawParameterValue(ParamIDs::bass)->load();
-        float m = apvts.getRawParameterValue(ParamIDs::mid)->load();
-        float t = apvts.getRawParameterValue(ParamIDs::treble)->load();
-        if (b != lastBass || m != lastMid || t != lastTreble)
-        {
-            lastBass = b; lastMid = m; lastTreble = t;
-            updateEQ();
-        }
-    }
-
     auto* ch0 = buffer.getWritePointer(0);
 
-    if (!namModel)
-    {
-        for (int ch = 1; ch < numOut; ++ch)
-            buffer.copyFrom(ch, 0, buffer, 0, 0, numSamples);
-        return;
-    }
+    // ── 2. Input gain ────────────────────────────────────────────────────────
+    float inGainDb = apvts.getRawParameterValue(ParamIDs::inputGain)->load();
+    if (std::abs(inGainDb) > 0.01f)
+        buffer.applyGain(0, 0, numSamples, juce::Decibels::decibelsToGain(inGainDb));
 
-    // ── 1. Noise gate ────────────────────────────────────────────────────────
+    // ── 3. Noise gate (only if user enabled it) ──────────────────────────────
     {
-        const float thresh = dialToGateThreshLin(
-            apvts.getRawParameterValue(ParamIDs::gate)->load());
-        if (thresh > 0.f)
+        float threshDb = apvts.getRawParameterValue(ParamIDs::gate)->load();
+        if (threshDb > -99.5f)
         {
+            float threshLin = juce::Decibels::decibelsToGain(threshDb);
             for (int i = 0; i < numSamples; ++i)
             {
                 float s = std::abs(ch0[i]);
-                gateEnv = (s > gateEnv) ? gateAttackCoef * gateEnv + (1.f - gateAttackCoef) * s
-                                        : gateRelCoef    * gateEnv;
-                // Hard gate: below threshold → silence; above → pass
-                float g = (gateEnv >= thresh) ? 1.f : 0.f;
-                ch0[i] *= g;
+                gateEnv = (s > gateEnv)
+                            ? gateAttackCoef * gateEnv + (1.f - gateAttackCoef) * s
+                            : gateRelCoef    * gateEnv;
+                if (gateEnv < threshLin) ch0[i] = 0.f;
             }
         }
     }
 
-    // ── 2. NAM + IR (signal flows: gate → NAM → IR) ──────────────────────────
+    // ── 4. NAM (×10 pre, ×3 post — fixed calibration) ────────────────────────
+    if (namModel)
     {
         const size_t n = static_cast<size_t>(numSamples);
-        if (namIn.size() < n * 2) { namIn.resize(n * 2, 0.0); namOut.resize(n * 2, 0.0); }
+        if (namIn.size() < n) { namIn.resize(n * 2, 0.0); namOut.resize(n * 2, 0.0); }
 
-        const double preBoost = dialToPreBoost(apvts.getRawParameterValue(ParamIDs::gain)->load());
+        constexpr double kPre  = 10.0;
+        constexpr double kPost = 3.0;
+
         for (int i = 0; i < numSamples; ++i)
-            namIn[static_cast<size_t>(i)] = static_cast<double>(ch0[i]) * preBoost;
+            namIn[(size_t)i] = static_cast<double>(ch0[i]) * kPre;
 
-        double* inp  = namIn.data();
-        double* outp = namOut.data();
-        namModel->process(&inp, &outp, numSamples);
-        double* finalOut = namOut.data();
+        double* in  = namIn.data();
+        double* out = namOut.data();
+        namModel->process(&in, &out, numSamples);
 
-        float cabMix = dialToCabMix(apvts.getRawParameterValue(ParamIDs::cabMix)->load());
-        if (irProcessor && cabMix > 0.0f)
+        for (int i = 0; i < numSamples; ++i)
+            ch0[i] = static_cast<float>(namOut[(size_t)i] * kPost);
+    }
+
+    // ── 5. IR convolution (NAM-style) ─────────────────────────────────────────
+    if (irProcessor)
+    {
+        const size_t n = static_cast<size_t>(numSamples);
+        if (namIn.size() < n) namIn.resize(n * 2, 0.0);
+
+        for (int i = 0; i < numSamples; ++i)
+            namIn[(size_t)i] = static_cast<double>(ch0[i]);
+
+        double*  irIn    = namIn.data();
+        double** irInPtr = &irIn;
+        double** irOut   = irProcessor->Process(irInPtr, 1, n);
+        if (irOut && irOut[0])
         {
-            double* irIn = namOut.data();
-            double** irInPtr = &irIn;
-            double** irOut = irProcessor->Process(irInPtr, 1,
-                                                   static_cast<size_t>(numSamples));
-            if (irOut && irOut[0])
-            {
-                constexpr float postBoost = 3.0f;
-                for (int i = 0; i < numSamples; ++i)
-                {
-                    float wet = static_cast<float>(irOut[0][i]) * postBoost;
-                    float dry = static_cast<float>(finalOut[i]) * postBoost;
-                    ch0[i] = dry * (1.0f - cabMix) + wet * cabMix;
-                }
-                finalOut = nullptr;
-            }
-        }
-
-        if (finalOut)
-        {
-            constexpr float postBoost = 3.0f;
             for (int i = 0; i < numSamples; ++i)
-                ch0[i] = static_cast<float>(finalOut[i]) * postBoost;
+                ch0[i] = static_cast<float>(irOut[0][i]);
         }
     }
 
-    // ── 3. User EQ (Bass/Mid/Treble) — only active when knobs are off-centre ─
-    // At BASS=MID=TREBLE=5, the filters are at 0 dB → effectively transparent.
+    // ── 6. Tone stack (only does anything when knobs are off-centre) ─────────
+    updateEQ();
     {
         juce::dsp::AudioBlock<float> block(buffer);
         juce::dsp::ProcessContextReplacing<float> ctx(block);
@@ -290,41 +326,40 @@ void MetallicaToneProcessor::processBlock(juce::AudioBuffer<float>& buffer,
         trebleFilter.process(ctx);
     }
 
-    // ── 4. Master volume ──────────────────────────────────────────────────────
-    float masterDb = dialToMasterDb(apvts.getRawParameterValue(ParamIDs::master)->load());
-    buffer.applyGain(juce::Decibels::decibelsToGain(masterDb));
+    // ── 7. Master gain ───────────────────────────────────────────────────────
+    float masterDb = apvts.getRawParameterValue(ParamIDs::master)->load();
+    if (std::abs(masterDb) > 0.01f)
+        buffer.applyGain(juce::Decibels::decibelsToGain(masterDb));
 
-    // ── 5. Mono → stereo copy ────────────────────────────────────────────────
+    // ── 8. Mono → stereo copy ────────────────────────────────────────────────
     for (int ch = 1; ch < numOut; ++ch)
         buffer.copyFrom(ch, 0, buffer, 0, 0, numSamples);
 }
 
-// ─── State ───────────────────────────────────────────────────────────────────
+// ── State ────────────────────────────────────────────────────────────────────
 
-void MetallicaToneProcessor::getStateInformation(juce::MemoryBlock& destData)
+void MetalToneProcessor::getStateInformation(juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
     std::unique_ptr<juce::XmlElement> xml(state.createXml());
     copyXmlToBinary(*xml, destData);
 }
 
-void MetallicaToneProcessor::setStateInformation(const void* data, int sizeInBytes)
+void MetalToneProcessor::setStateInformation(const void* data, int size)
 {
-    std::unique_ptr<juce::XmlElement> xml(getXmlFromBinary(data, sizeInBytes));
+    std::unique_ptr<juce::XmlElement> xml(getXmlFromBinary(data, size));
     if (xml && xml->hasTagName(apvts.state.getType()))
         apvts.replaceState(juce::ValueTree::fromXml(*xml));
 }
 
-// ─── Editor factory ──────────────────────────────────────────────────────────
+// ── Editor / Plugin factory ──────────────────────────────────────────────────
 
-juce::AudioProcessorEditor* MetallicaToneProcessor::createEditor()
+juce::AudioProcessorEditor* MetalToneProcessor::createEditor()
 {
-    return new MetallicaToneEditor(*this);
+    return new MetalToneEditor(*this);
 }
-
-// ─── Plugin factory ──────────────────────────────────────────────────────────
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new MetallicaToneProcessor();
+    return new MetalToneProcessor();
 }

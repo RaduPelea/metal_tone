@@ -3,52 +3,53 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "PluginProcessor.h"
 
-// ── Custom look & feel ────────────────────────────────────────────────────────
-class MetallicaLookAndFeel : public juce::LookAndFeel_V4
+class MetalToneEditor : public juce::AudioProcessorEditor,
+                         public juce::FileDragAndDropTarget,
+                         private juce::Timer
 {
 public:
-    MetallicaLookAndFeel();
-    void drawRotarySlider(juce::Graphics&, int x, int y, int w, int h,
-                          float sliderPos, float startAngle, float endAngle,
-                          juce::Slider&) override;
-    void drawLabel(juce::Graphics&, juce::Label&) override;
-};
-
-// ── Knob + label combo ────────────────────────────────────────────────────────
-class AmpKnob : public juce::Component
-{
-public:
-    juce::Slider slider;
-    juce::Label  nameLabel;
-    juce::Label  valueLabel;
-
-    explicit AmpKnob(const juce::String& name);
-    void resized() override;
-};
-
-// ── Main editor ───────────────────────────────────────────────────────────────
-class MetallicaToneEditor : public juce::AudioProcessorEditor,
-                             public juce::Slider::Listener
-{
-public:
-    explicit MetallicaToneEditor(MetallicaToneProcessor&);
-    ~MetallicaToneEditor() override;
+    explicit MetalToneEditor(MetalToneProcessor&);
+    ~MetalToneEditor() override;
 
     void paint(juce::Graphics&) override;
     void resized() override;
-    void sliderValueChanged(juce::Slider*) override {}  // handled by APVTS attachments
+
+    // Drag & drop
+    bool isInterestedInFileDrag(const juce::StringArray&) override;
+    void filesDropped         (const juce::StringArray&, int x, int y) override;
+    void fileDragEnter        (const juce::StringArray&, int x, int y) override;
+    void fileDragExit         (const juce::StringArray&) override;
 
 private:
-    MetallicaToneProcessor& processor;
-    MetallicaLookAndFeel laf;
+    void timerCallback() override;
+    void chooseNAM();
+    void chooseIR();
 
-    AmpKnob kGain, kGate, kBass, kMid, kTreble, kMaster, kCabMix;
+    // Helper: one labelled rotary knob
+    struct Knob : public juce::Component
+    {
+        juce::Slider slider;
+        juce::Label  caption;
 
-    using Attachment = juce::AudioProcessorValueTreeState::SliderAttachment;
-    Attachment attGain, attGate, attBass, attMid, attTreble, attMaster, attCabMix;
+        Knob(const juce::String& name);
+        void resized() override;
+    };
 
-    juce::Label titleLabel;
-    juce::Label presetLabel;
+    MetalToneProcessor& processor;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MetallicaToneEditor)
+    Knob kInput, kGate, kBass, kMid, kTreble, kMaster;
+
+    using Att = juce::AudioProcessorValueTreeState::SliderAttachment;
+    Att aInput, aGate, aBass, aMid, aTreble, aMaster;
+
+    juce::Label    titleLabel;
+    juce::Label    namLabel, irLabel;
+    juce::TextButton btnLoadNam { "Load NAM..." };
+    juce::TextButton btnLoadIr  { "Load IR..."  };
+
+    std::unique_ptr<juce::FileChooser> fileChooser;
+
+    bool dragHighlight = false;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(MetalToneEditor)
 };

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(MetallicaTone VERSION 1.0.0)
+project(MetalTone VERSION 1.0.0)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -7,11 +7,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_subdirectory("C:/stringotter/JUCE_8"
                  ${CMAKE_CURRENT_BINARY_DIR}/JUCE)
 
-# ── NeuralAmpModelerCore ──────────────────────────────────────────────────────
+# ── NeuralAmpModelerCore ─────────────────────────────────────────────────────
 set(NAM_CORE_PATH  "C:/stringotter/NeuralAmpModelerCore")
 set(NAM_DEPS_PATH  "${NAM_CORE_PATH}/Dependencies")
 set(ADSP_PATH      "${NAM_DEPS_PATH}/AudioDSPTools/dsp")
 
+# GLOB_RECURSE picks up NAM/wavenet/*.cpp — required so _register_WaveNet runs
 file(GLOB_RECURSE NAM_SOURCES "${NAM_CORE_PATH}/NAM/*.cpp")
 set(ADSP_SOURCES
     "${ADSP_PATH}/dsp.cpp"
@@ -33,15 +34,15 @@ else()
     target_compile_options(NAMCore PRIVATE -w)
 endif()
 
-# ── Plugin formats ────────────────────────────────────────────────────────────
+# ── Plugin formats ───────────────────────────────────────────────────────────
 if(APPLE)
     set(PLUGIN_FORMATS AU VST3 Standalone)
 else()
     set(PLUGIN_FORMATS VST3 Standalone)
 endif()
 
-juce_add_plugin(MetallicaTone
-    COMPANY_NAME             "MetallicaTone"
+juce_add_plugin(MetalTone
+    COMPANY_NAME             "MetalTone"
     IS_SYNTH                 FALSE
     NEEDS_MIDI_INPUT         FALSE
     NEEDS_MIDI_OUTPUT        FALSE
@@ -51,47 +52,48 @@ juce_add_plugin(MetallicaTone
     PLUGIN_MANUFACTURER_CODE Mtal
     PLUGIN_CODE              Mtal
     FORMATS                  ${PLUGIN_FORMATS}
-    PRODUCT_NAME             "MetallicaTone"
+    PRODUCT_NAME             "MetalTone"
     MICROPHONE_PERMISSION_ENABLED TRUE
-    MICROPHONE_PERMISSION_TEXT "MetallicaTone needs audio input for your guitar."
+    MICROPHONE_PERMISSION_TEXT "MetalTone needs audio input for your guitar."
 )
 
-# ── Embedded assets ───────────────────────────────────────────────────────────
-juce_add_binary_data(MetallicaBinaryData
+# ── Embedded defaults ────────────────────────────────────────────────────────
+juce_add_binary_data(MetalToneBinaryData
     SOURCES
         Resources/DethLead.nam
         Resources/sm57.wav
 )
 
-# ── Sources ───────────────────────────────────────────────────────────────────
-target_sources(MetallicaTone PRIVATE
+# ── Sources ──────────────────────────────────────────────────────────────────
+target_sources(MetalTone PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
 )
 
-target_include_directories(MetallicaTone PRIVATE
+target_include_directories(MetalTone PRIVATE
     ${NAM_CORE_PATH}
     ${NAM_DEPS_PATH}/eigen
     ${NAM_DEPS_PATH}/nlohmann
     ${ADSP_PATH}
 )
-target_include_directories(MetallicaTone SYSTEM PRIVATE
+target_include_directories(MetalTone SYSTEM PRIVATE
     ${NAM_CORE_PATH}
     ${NAM_DEPS_PATH}/eigen
     ${NAM_DEPS_PATH}/nlohmann
     ${ADSP_PATH}
 )
 
-target_compile_definitions(MetallicaTone PUBLIC
+target_compile_definitions(MetalTone PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
     JUCE_DISPLAY_SPLASH_SCREEN=0
 )
 
-target_link_libraries(MetallicaTone
+# WHOLEARCHIVE forces MSVC linker to keep wavenet/model.cpp's static registrar
+target_link_libraries(MetalTone
     PRIVATE
-        MetallicaBinaryData
+        MetalToneBinaryData
         $<$<CXX_COMPILER_ID:MSVC>:-WHOLEARCHIVE:NAMCore>
         NAMCore
         juce::juce_audio_utils
